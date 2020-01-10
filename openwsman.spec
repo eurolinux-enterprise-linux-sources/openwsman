@@ -5,7 +5,7 @@
 
 Name:           openwsman
 Version:        2.2.3
-Release:        8%{?dist}
+Release:        9%{?dist}
 License:        BSD
 Url:            http://www.openwsman.org/
 Source:         http://downloads.sourceforge.net/project/openwsman/%{name}/%{version}/%{name}-%{version}.tar.bz2
@@ -17,6 +17,9 @@ Patch1:         openwsman-2.2.3-release_cmpi_data_remove.patch
 Patch2:         openwsman-2.2.3-initscript.patch
 # Patch3: fixes bz625160, already commited in upstream repository
 Patch3:         openwsman-2.2.3-sfcc-interface.patch
+# Patch4: enable disabling various SSL protocols in config file,
+#   backported from upsream
+Patch4:         openwsman-2.2.3-disable-ssl-protocols-config.patch
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXXX)
 Group:          Applications/System
 Summary:        Open-source Implementation of WS-Management
@@ -129,6 +132,7 @@ This package provides Perl bindings to access the openwsman client API.
 %patch1 -p1 -b .release_cmpi_data_remove
 %patch2 -p1 -b .initscript
 %patch3 -p1 -b .sfcc-interface
+%patch4 -p1 -b .disable-ssl-protocols-config
 
 
 %build
@@ -170,7 +174,7 @@ cp %SOURCE1 %{buildroot}/%{_mandir}/man8/
 mkdir -p %{buildroot}/%{ruby_sitelib}
 mkdir -p %{buildroot}/%{ruby_sitearch}
 mv %{buildroot}/usr/lib/ruby/1.8/openwsman %{buildroot}/%{ruby_sitelib}/openwsman
-mv %{buildroot}/%{_libdir}/ruby/%{rarch}/1.8/%{rarch}/openwsman.so %{buildroot}/%{ruby_sitearch}
+mv %{buildroot}/%{_libdir}/ruby/1.8/%{rarch}/openwsman.so %{buildroot}/%{ruby_sitearch}
 # install missing headers
 install -m 644 include/wsman-xml.h %{buildroot}/%{_includedir}/openwsman
 install -m 644 include/wsman-xml-binding.h %{buildroot}/%{_includedir}/openwsman
@@ -271,6 +275,10 @@ fi
 %postun client -p /sbin/ldconfig
 
 %changelog
+* Tue Nov 03 2015 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-9
+- Backport option for disabling various SSL protocols
+  Resolves: #1157508
+
 * Tue Jan 11 2011 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-8
 - Fix dangling symlink caused by init script move
 
