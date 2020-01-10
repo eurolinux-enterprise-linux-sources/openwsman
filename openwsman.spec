@@ -5,7 +5,7 @@
 
 Name:           openwsman
 Version:        2.2.3
-Release:        9%{?dist}
+Release:        11%{?dist}
 License:        BSD
 Url:            http://www.openwsman.org/
 Source:         http://downloads.sourceforge.net/project/openwsman/%{name}/%{version}/%{name}-%{version}.tar.bz2
@@ -18,8 +18,10 @@ Patch2:         openwsman-2.2.3-initscript.patch
 # Patch3: fixes bz625160, already commited in upstream repository
 Patch3:         openwsman-2.2.3-sfcc-interface.patch
 # Patch4: enable disabling various SSL protocols in config file,
-#   backported from upsream
+#   backported from upstream
 Patch4:         openwsman-2.2.3-disable-ssl-protocols-config.patch
+# Patch5: fixes default /etc/pam.d/openwsman configuration, bz1152654
+Patch5:         openwsman-2.2.3-pamsetup.patch
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXXX)
 Group:          Applications/System
 Summary:        Open-source Implementation of WS-Management
@@ -133,6 +135,7 @@ This package provides Perl bindings to access the openwsman client API.
 %patch2 -p1 -b .initscript
 %patch3 -p1 -b .sfcc-interface
 %patch4 -p1 -b .disable-ssl-protocols-config
+%patch5 -p1 -b .pamsetup
 
 
 %build
@@ -275,6 +278,16 @@ fi
 %postun client -p /sbin/ldconfig
 
 %changelog
+* Wed Jan 18 2017 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-11
+- Additional PAM config fixes
+  (use pam_cracklib.so instead of pam_pwcheck.so,
+  remove "none" option from session type check - pam_unix.so desn't have it)
+  Related: #1152654
+
+* Tue Oct 11 2016 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-10
+- Fix default /etc/pam.d/openwsman configuration
+  Resolves: #1152654
+
 * Tue Nov 03 2015 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-9
 - Backport option for disabling various SSL protocols
   Resolves: #1157508
