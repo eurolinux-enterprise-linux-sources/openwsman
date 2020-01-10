@@ -5,17 +5,18 @@
 
 Name:           openwsman
 Version:        2.2.3
-Release:        6%{?dist}
+Release:        8%{?dist}
 License:        BSD
 Url:            http://www.openwsman.org/
 Source:         http://downloads.sourceforge.net/project/openwsman/%{name}/%{version}/%{name}-%{version}.tar.bz2
 Source1:        openwsmand.8.gz
-Patch0:         %{name}-initscript.patch
+# Patch0: accepted by upstream
+Patch0:         openwsman-2.2.3-cert-verify-fix.patch
 # Patch1: accepted by upstream
-Patch1:         openwsman-2.2.3-cert-verify-fix.patch
-# Patch2: accepted by upstream
-Patch2:         openwsman-2.2.3-release_cmpi_data_remove.patch
-Patch3:         openwsman-2.2.3-initscript.patch
+Patch1:         openwsman-2.2.3-release_cmpi_data_remove.patch
+Patch2:         openwsman-2.2.3-initscript.patch
+# Patch3: fixes bz625160, already commited in upstream repository
+Patch3:         openwsman-2.2.3-sfcc-interface.patch
 BuildRoot:      %(mktemp -ud %{_tmppath}/%{name}-%{version}-%{release}-XXXXXXX)
 Group:          Applications/System
 Summary:        Open-source Implementation of WS-Management
@@ -124,10 +125,10 @@ This package provides Perl bindings to access the openwsman client API.
 
 %prep
 %setup -q 
-%patch0 -p1 -b .initscript
-%patch1 -p1 -b .cert-verify-fix
-%patch2 -p1 -b .release_cmpi_data_remove
-%patch3 -p1 -b .initscript2
+%patch0 -p1 -b .cert-verify-fix
+%patch1 -p1 -b .release_cmpi_data_remove
+%patch2 -p1 -b .initscript
+%patch3 -p1 -b .sfcc-interface
 
 
 %build
@@ -158,8 +159,9 @@ mkdir -p %{buildroot}/%{_sysconfdir}/init.d
 install -m 644 etc/openwsman.conf %{buildroot}/%{_sysconfdir}/openwsman
 install -m 644 etc/ssleay.cnf %{buildroot}/%{_sysconfdir}/openwsman
 install -m 644 etc/openwsman_client.conf %{buildroot}/%{_sysconfdir}/openwsman
-install -m 755 etc/init/openwsmand.sh %{buildroot}/%{_sysconfdir}/init.d/openwsmand
-ln -sf %{_sysconfdir}/init.d/openwsmand %{buildroot}/%{_sbindir}/rcopenwsmand
+mkdir -p %{buildroot}/%{_sysconfdir}/rc.d/init.d
+install -m 755 etc/init/openwsmand.sh %{buildroot}/%{_sysconfdir}/rc.d/init.d/openwsmand
+ln -sf %{_sysconfdir}/rc.d/init.d/openwsmand %{buildroot}/%{_sbindir}/rcopenwsmand
 # install manpage
 mkdir -p %{buildroot}/%{_mandir}/man8/
 cp %SOURCE1 %{buildroot}/%{_mandir}/man8/
@@ -169,6 +171,10 @@ mkdir -p %{buildroot}/%{ruby_sitelib}
 mkdir -p %{buildroot}/%{ruby_sitearch}
 mv %{buildroot}/usr/lib/ruby/1.8/openwsman %{buildroot}/%{ruby_sitelib}/openwsman
 mv %{buildroot}/%{_libdir}/ruby/%{rarch}/1.8/%{rarch}/openwsman.so %{buildroot}/%{ruby_sitearch}
+# install missing headers
+install -m 644 include/wsman-xml.h %{buildroot}/%{_includedir}/openwsman
+install -m 644 include/wsman-xml-binding.h %{buildroot}/%{_includedir}/openwsman
+install -m 644 include/wsman-dispatcher.h %{buildroot}/%{_includedir}/openwsman
 
 
 %clean
@@ -219,7 +225,7 @@ rm -rf %{buildroot}
 %config(noreplace) %{_sysconfdir}/openwsman/ssleay.cnf
 %attr(0755,root,root) %{_sysconfdir}/openwsman/owsmangencert.sh
 %config(noreplace) %{_sysconfdir}/pam.d/openwsman
-%attr(0755,root,root) %{_sysconfdir}/init.d/openwsmand
+%attr(0755,root,root) %{_sysconfdir}/rc.d/init.d/openwsmand
 %dir %{_libdir}/openwsman
 %dir %{_libdir}/openwsman/authenticators
 %{_libdir}/openwsman/authenticators/*.so
@@ -265,6 +271,21 @@ fi
 %postun client -p /sbin/ldconfig
 
 %changelog
+* Tue Jan 11 2011 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-8
+- Fix dangling symlink caused by init script move
+
+* Tue Jan  4 2011 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-7
+- Add missing openwsman headers to libwsman-devel
+  Resolves: #615922
+- Move initscript to the right place
+  Resolves: #626773
+- Fix return values from initscript according to guidelines
+  Resolves: #613031
+- Fix ssl check behaviour in initscript
+  Resolves: #617549
+- Fix openwsman crashes when sfcb is stopped
+  Resolves: #625160
+
 * Mon Jul 12 2010 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.2.3-6
 - Fix initscript
 
