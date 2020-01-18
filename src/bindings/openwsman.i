@@ -1,95 +1,30 @@
-%{
 /*
- * type definitions to keep the C code generic
+ * Document-module: Openwsman
+ * = About openwsman
+ * Openwsman (http://www.openwsman.org) is a project intended to provide an open-source
+ * implementation of the Web Services Management specification
+ * (WS-Management) and to expose system management information on the
+ * Linux operating system using the WS-Management protocol. WS-Management
+ * is based on a suite of web services specifications and usage
+ * requirements that exposes a set of operations focused on and covers
+ * all system management aspects. 
+ *
+ * = Using the bindings
+ * The bindings provide access to the client-side API of openwsman.
+ * You start by creating a Client instance and set up ClientOptions
+ * to control the communication.
+ *
+ * The Client instance now provides the WS-Management operations, like
+ * enumerate, get, invoke, etc.
+ *
+ * All client operations return a XmlDoc representing the SOAP response
+ * from the system.
+ *
+ * You can then use XmlDoc methods to extract SOAP elements from the
+ * response and dig down through its XmlNode and XmlAttr objects.
+ *
  */
  
-#if defined(SWIGPYTHON)
-#define Target_Null_p(x) (x == Py_None)
-#define Target_INCREF(x) Py_INCREF(x)
-#define Target_DECREF(x) Py_DECREF(x)
-#define Target_True Py_True
-#define Target_False Py_False
-#define Target_Null Py_None
-#define Target_Type PyObject*
-#define Target_Bool(x) PyBool_FromLong(x)
-#define Target_Char16(x) PyInt_FromLong(x)
-#define Target_Int(x) PyInt_FromLong(x)
-#define Target_String(x) PyString_FromString(x)
-#define Target_Real(x) Py_None
-#define Target_Array() PyList_New(0)
-#define Target_SizedArray(len) PyList_New(len)
-#define Target_ListSet(x,n,y) PyList_SetItem(x,n,y)
-#define Target_Append(x,y) PyList_Append(x,y)
-#include <Python.h>
-#define TARGET_THREAD_BEGIN_BLOCK SWIG_PYTHON_THREAD_BEGIN_BLOCK
-#define TARGET_THREAD_END_BLOCK SWIG_PYTHON_THREAD_END_BLOCK
-#define TARGET_THREAD_BEGIN_ALLOW SWIG_PYTHON_THREAD_BEGIN_ALLOW
-#define TARGET_THREAD_END_ALLOW SWIG_PYTHON_THREAD_END_ALLOW
-#endif
-
-#if defined(SWIGRUBY)
-#define Target_Null_p(x) NIL_P(x)
-#define Target_INCREF(x) 
-#define Target_DECREF(x) 
-#define Target_True Qtrue
-#define Target_False Qfalse
-#define Target_Null Qnil
-#define Target_Type VALUE
-#define Target_Bool(x) ((x)?Qtrue:Qfalse)
-#define Target_Char16(x) INT2FIX(x)
-#define Target_Int(x) INT2FIX(x)
-#define Target_String(x) rb_str_new2(x)
-#define Target_Real(x) rb_float_new(x)
-#define Target_Array() rb_ary_new()
-#define Target_SizedArray(len) rb_ary_new2(len)
-#define Target_ListSet(x,n,y) rb_ary_store(x,n,y)
-#define Target_Append(x,y) rb_ary_push(x,y)
-#define TARGET_THREAD_BEGIN_BLOCK do {} while(0)
-#define TARGET_THREAD_END_BLOCK do {} while(0)
-#define TARGET_THREAD_BEGIN_ALLOW do {} while(0)
-#define TARGET_THREAD_END_ALLOW do {} while(0)
-#include <ruby.h>
-#if HAVE_RUBY_IO_H
-#include <ruby/io.h> /* Ruby 1.9 style */
-#else
-#include <rubyio.h>
-#endif
-#if HAVE_RUBY_VERSION_H
-#include <ruby/version.h>
-#endif
-#endif
-
-#if defined(SWIGPERL)
-#define TARGET_THREAD_BEGIN_BLOCK do {} while(0)
-#define TARGET_THREAD_END_BLOCK do {} while(0)
-#define TARGET_THREAD_BEGIN_ALLOW do {} while(0)
-#define TARGET_THREAD_END_ALLOW do {} while(0)
-
-SWIGINTERNINLINE SV *SWIG_From_long  SWIG_PERL_DECL_ARGS_1(long value);
-SWIGINTERNINLINE SV *SWIG_FromCharPtr(const char *cptr);
-SWIGINTERNINLINE SV *SWIG_From_double  SWIG_PERL_DECL_ARGS_1(double value);
-
-#define Target_Null_p(x) (x == NULL)
-#define Target_INCREF(x) 
-#define Target_DECREF(x) 
-#define Target_True (&PL_sv_yes)
-#define Target_False (&PL_sv_no)
-#define Target_Null NULL
-#define Target_Type SV *
-#define Target_Bool(x) (x)?Target_True:Target_False
-#define Target_Char16(x) SWIG_From_long(x)
-#define Target_Int(x) SWIG_From_long(x)
-#define Target_String(x) SWIG_FromCharPtr(x)
-#define Target_Real(x) SWIG_From_double(x)
-#define Target_Array() (SV *)newAV()
-#define Target_SizedArray(len) (SV *)newAV()
-#define Target_ListSet(x,n,y) av_store((AV *)(x),n,y)
-#define Target_Append(x,y) av_push(((AV *)(x)), y)
-#include <perl.h>
-#include <EXTERN.h>
-#endif
-
-%}
 
 #if defined(SWIGRUBY)
 %module Openwsman
@@ -100,10 +35,6 @@ SWIGINTERNINLINE SV *SWIG_From_double  SWIG_PERL_DECL_ARGS_1(double value);
 #include <ruby/io.h> /* Ruby 1.9 style */
 #else
 #include <rubyio.h>
-#endif
-
-#if HAVE_RUBY_THREAD_H /* New threading model */
-#include <ruby/thread.h>
 #endif
 %}
 
@@ -123,7 +54,7 @@ SWIGINTERNINLINE SV *SWIG_From_double  SWIG_PERL_DECL_ARGS_1(double value);
 #endif
 }
 
-#endif /* SWIGRUBY */
+#endif
 
 #if defined(SWIGJAVA)
 %module OpenWSMan
@@ -172,19 +103,15 @@ SWIGINTERNINLINE SV *SWIG_From_double  SWIG_PERL_DECL_ARGS_1(double value);
 /* get the java environment so we can throw exceptions */
 %{
     static JNIEnv *jenv;
-    /*:nodoc:*/
     jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       (*vm)->AttachCurrentThread(vm, (void **)&jenv, NULL);
       return JNI_VERSION_1_2;
     }
 %}
-#endif /* SWIGJAVA */
+#endif
 
 #if defined(SWIGPYTHON)
 %module pywsman
-/* Wrap file operations, as Python's native ones are incompatible */
-FILE *fopen(char *, char *);
-void fclose(FILE *f);
 #endif
 
 #if defined(SWIGPERL)
@@ -196,7 +123,7 @@ void fclose(FILE *f);
 %typemap(in) FILE* {
     $1 = PerlIO_findFILE(IoIFP(sv_2io($input)));
 }
-#endif /* SWIGPERL */
+#endif
 
 %{
 #if defined(SWIGPERL)
@@ -206,7 +133,7 @@ void fclose(FILE *f);
 /* undef Perl's die and warn macros as libu is going to reuse this names */
 #undef die
 #undef warn
-#endif /* SWIGPERL */
+#endif
 
 #include <u/libu.h>
 #include <wsman-types.h>
@@ -220,21 +147,14 @@ void fclose(FILE *f);
 #include <wsman-soap.h>
 #include <wsman-soap-envelope.h>
 #include <openwsman.h>
-
 #if defined(SWIGRUBY)
 #include <ruby/helpers.h>
 
-SWIGEXPORT
-/* Init_ for the %module, defined by Swig
- * :nodoc:
- */
-void Init_Openwsman(void);
+/* Init_ for the %module, defined by Swig */
+SWIGEXPORT void Init_Openwsman(void);
 
-SWIGEXPORT
-/* Init_ for the .so lib, called by Ruby
- * :nodoc:
- */
-void Init__openwsman(void) {
+/* Init_ for the .so lib, called by Ruby */
+SWIGEXPORT void Init__openwsman(void) {
   Init_Openwsman();
 }
 #endif
@@ -250,20 +170,13 @@ void Init__openwsman(void) {
 
 /* Provide WsManTransport definition so it can be used as
  * dedicated datatype in bindings.
- * :nodoc:ly, its aliased to WsManClient
- *
+ * Internally, its aliased to WsManClient
  */
 struct _WsManTransport { };
 typedef struct _WsManTransport WsManTransport;
 
 static void set_debug(int dbg);
 
-/*
- * Set openwsman debug level.
- * call-seq:
- *   Openwsman::debug = -1 # full debug
- *
- */
 static void set_debug(int dbg) {
   static int init = 0;
 
@@ -279,59 +192,29 @@ static void set_debug(int dbg) {
 
 static int get_debug(void);
 
-/*
- * Return openwsman debug level.
- * call-seq:
- *   Openwsman::debug -> Integer
- *
- */
 static int get_debug(void) {
   return (int)wsman_debug_get_level();
 }
 
 static WsXmlDocH create_soap_envelope(void);
-
-/*
- * Create empty SOAP envelope
- * call-seq:
- *   Openwsman::create_soap_envelope -> XmlDoc
- *
- */
 static WsXmlDocH create_soap_envelope() {
   return ws_xml_create_soap_envelope();
 }
 
 static WsXmlDocH create_doc_from_file(const char *filename, const char *encoding);
 
-/*
- * Read XmlDoc from file
- * call-seq:
- *   Openwsman::create_doc_from_file("/path/to/file", "utf-8") -> XmlDoc
- *
- */
 static WsXmlDocH create_doc_from_file(const char *filename, const char *encoding) {
   return xml_parser_file_to_doc( filename, encoding, 0);                 
 }
 
 static WsXmlDocH create_doc_from_string(const char *buf, const char *encoding);
 
-/*
- * Read XmlDoc from string
- * call-seq:
- *   Openwsman::create_doc_from_string("<xml ...>", "utf-8") -> XmlDoc
- *
- */
 static WsXmlDocH create_doc_from_string(const char *buf, const char *encoding) {
   return xml_parser_memory_to_doc( buf, strlen(buf), encoding, 0);
 }
 
 static char *uri_classname(const char *uri);
-/*
- * get classname from resource URI
- * call-seq:
- *   Openwsman::uri_classname("http://sblim.sf.net/wbem/wscim/1/cim-schema/2/Linux_OperatingSystem") -> "Linux_OperatingSystem"
- *
- */
+/* get classname from resource URI */
 static char *uri_classname(const char *uri) {
   const char *lastslash = strrchr(uri,'/');
   if (lastslash) {
@@ -340,14 +223,9 @@ static char *uri_classname(const char *uri) {
   return NULL;
 }
 
+
 static const char *uri_prefix(const char *classname);
-/*
- * Map classname (class schema) to resource uri prefix
- * call-seq:
- *   Openwsman::uri_prefix("Linux") -> "http://sblim.sf.net/wbem/wscim/1/cim-schema/2"
- *   Openwsman::uri_prefix("Win32") -> "http://schemas.microsoft.com/wbem/wsman/1/wmi"
- *
- */
+/* get resource URI prefix for a specific classname (resp class schema) */
 static const char *uri_prefix(const char *classname) {
   static struct map {
     int len;
@@ -374,14 +252,6 @@ static const char *uri_prefix(const char *classname) {
     { 3, "IPS", "http://intel.com/wbem/wscim/1/ips-schema/1" },
     /* Sun */
     { 3, "Sun","http://schemas.sun.com/wbem/wscim/1/cim-schema/2" },
-    /* Microsoft HyperV */
-    { 4, "Msvm", "http://schemas.microsoft.com/wbem/wsman/1/wmi" },
-    /* Dell DRAC */
-    { 4, "DCIM", "http://schemas.dell.com/wbem/wscim/1/cim-schema/2" },
-    /* Unisys */
-    { 4, "SPAR", "http://schema.unisys.com/wbem/wscim/1/cim-schema/2" },
-    /* Fujitsu */
-    { 3, "SVS", "http://schemas.ts.fujitsu.com/wbem/wscim/1/cim-schema/2" },
     { 0, NULL, NULL }
   };
   const char *schema_end;
@@ -413,7 +283,6 @@ static const char *uri_prefix(const char *classname) {
 
 #if defined(SWIGRUBY)
 static epr_t *my_epr_deserialize(WsXmlNodeH node);
-/*:nodoc:*/
 static epr_t *my_epr_deserialize(WsXmlNodeH node) {
   if (strcmp(WSA_EPR, ws_xml_get_node_local_name(node)) == 0) {
     /* Use node as-is if its already a WSA_EPR */
@@ -422,33 +291,10 @@ static epr_t *my_epr_deserialize(WsXmlNodeH node) {
   /* else search the WSA_EPR node */
   return epr_deserialize(node, XML_NS_ADDRESSING, WSA_EPR, 1);
 }
-
-static VALUE kv_list_to_hash(list_t *list)
-{
-  VALUE v = Qnil;
-  if (!list_isempty(list)) {
-  v = rb_hash_new();
-  lnode_t *node = list_first(list);
-  while (node) {
-    key_value_t *kv = (key_value_t *)node->list_data;
-    if (kv->type == 0) {
-      rb_hash_aset( v, makestring(kv->key), makestring(kv->v.text));
-    }
-    else {
-      VALUE epr = SWIG_NewPointerObj((void*)kv->v.epr, SWIGTYPE_p_epr_t, 0);
-      rb_hash_aset( v, makestring(kv->key), epr);
-    }
-    node = list_next(list, node);
-    }
-  }
-  return v;
-}
 #endif
 
 static char *epr_prefix(const char *uri);
-/* Get prefix from a EPR uri
- * :nodoc:
- */
+/* Get prefix from a EPR uri */
 static char *epr_prefix(const char *uri) {
   char *classname = uri_classname(uri);
   const char *prefix = uri_prefix(classname);
@@ -466,83 +312,6 @@ static char *epr_prefix(const char *uri) {
 }
 
 %}
-
-#if RUBY_VERSION > 18
-%{
-  typedef struct {
-    WsManClient *client;
-    client_opt_t *options;
-    filter_t *filter;
-    const char *resource_uri;
-    epr_t *epr;
-    const char *context;
-    const char *identifier;
-    const char *data;
-    size_t size;
-    const char *encoding;
-    const char *method;
-    WsXmlDocH method_args;
-  } wsmc_action_args_t;
-
-  WsXmlDocH
-  ruby_enumerate_thread(wsmc_action_args_t *args) {
-    return wsmc_action_enumerate(args->client, args->resource_uri, args->options, args->filter);
-  }
-  WsXmlDocH
-  ruby_identify_thread(wsmc_action_args_t *args) {
-    return wsmc_action_identify(args->client, args->options);
-  }
-  WsXmlDocH
-  ruby_get_from_epr_thread(wsmc_action_args_t *args) {
-    return wsmc_action_get_from_epr(args->client, args->epr, args->options);
-  }
-  WsXmlDocH
-  ruby_delete_from_epr_thread(wsmc_action_args_t *args) {
-    return wsmc_action_delete_from_epr(args->client, args->epr, args->options);
-  }
-  WsXmlDocH
-  ruby_pull_thread(wsmc_action_args_t *args) {
-    return wsmc_action_pull(args->client, args->resource_uri, args->options, args->filter, args->context);
-  }
-  WsXmlDocH
-  ruby_create_fromtext_thread(wsmc_action_args_t *args) {
-    return wsmc_action_create_fromtext(args->client, args->resource_uri, args->options, args->data, args->size, args->encoding);
-  }
-  WsXmlDocH
-  ruby_put_fromtext_thread(wsmc_action_args_t *args) {
-    return wsmc_action_put_fromtext(args->client, args->resource_uri, args->options, args->data, args->size, args->encoding);
-  }
-  WsXmlDocH
-  ruby_release_thread(wsmc_action_args_t *args) {
-    return wsmc_action_release(args->client, args->resource_uri, args->options, args->context);
-  }
-  WsXmlDocH
-  ruby_get_thread(wsmc_action_args_t *args) {
-    return wsmc_action_get(args->client, args->resource_uri, args->options);
-  }
-  WsXmlDocH
-  ruby_delete_thread(wsmc_action_args_t *args) {
-    return wsmc_action_delete(args->client, args->resource_uri, args->options);
-  }
-  WsXmlDocH
-  ruby_invoke_thread(wsmc_action_args_t *args) { 
-    return wsmc_action_invoke(args->client, args->resource_uri, args->options, args->method, args->method_args);
-  }
-  WsXmlDocH
-  ruby_subscribe_thread(wsmc_action_args_t *args) {
-    return wsmc_action_subscribe(args->client, args->resource_uri, args->options, args->filter);
-  }
-  WsXmlDocH
-  ruby_unsubscribe_thread(wsmc_action_args_t *args) {
-    return wsmc_action_unsubscribe(args->client, args->resource_uri, args->options, args->identifier);
-  }
-  WsXmlDocH
-  ruby_renew_thread(wsmc_action_args_t *args) {
-    return wsmc_action_renew(args->client, args->resource_uri, args->options, args->identifier);
-  }
-%}
-#endif
-
 
 /*
  * hash_t typemaps
@@ -598,7 +367,7 @@ static char *epr_prefix(const char *uri) {
 
 %include "wsman-transport.i"
 
-%include "wsman-client_opt.i"
+%include "client_opt.i"
 
 %include "wsman-client.i"
 
@@ -608,12 +377,38 @@ static char *epr_prefix(const char *uri) {
 #if defined(SWIGRUBY)
   %rename("debug=") set_debug(int debug);
 #endif
+
+/*
+ * Return openwsman debug level.
+ */
 static void set_debug(int dbg);
+
 #if defined(SWIGRUBY)
   %rename("debug") get_debug();
 #endif
+
+/*
+ * Set openwsman debug level.
+ */
 static int get_debug();
+
+/*
+ * Create empty SOAP envelope (XmlDoc)
+ * 
+ */
 static WsXmlDocH create_soap_envelope();
+
+/*
+ * Read XmlDoc from file
+ */
 static WsXmlDocH create_doc_from_file(const char *filename, const char *encoding = "UTF-8");
+
+/*
+ * Read XmlDoc from string
+ */
 static WsXmlDocH create_doc_from_string(const char *buf, const char *encoding = "UTF-8");
+
+/*
+ * Map classname (class schema) to resource uri prefix
+ */
 static const char *uri_prefix(const char* classname);

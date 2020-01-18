@@ -70,31 +70,14 @@ int initialize(void *arg) {
     return 0;
 }
 
-/*
- * constant-time comparison to prevent brute-force attacks on authorize()
- *
- * returns zero only if s1 and s2 are bit-wise identical for the first len characters.
- */
-static int
-safe_cmp(unsigned const char *s1, unsigned const char *s2, size_t len)
-{
-  size_t i = 0;
-  unsigned char result = 0;
 
-  while (i++ < len) {
-    result |= *s1++ ^ *s2++;
-  }
-  return result;
-}
 
 int
 authorize(char *username, const char *password)
 {
         int             authorized = 0;
-        char            l[256], u[65], passwd[129];
+        char            l[256], u[65], passwd[65];
         char *newpw = NULL ;
-        size_t username_l;
-        size_t min_len;
 
         debug( "Checking basic for user: %s; password XXXXX",
                             username);
@@ -105,7 +88,6 @@ authorize(char *username, const char *password)
                     username);
                 return 0;
         }
-        username_l = strlen(username);
         FILE *fp = fopen(filename, "r");
         if (!fp) {
             debug( "Couldn't open basic passwd file %s",
@@ -114,23 +96,13 @@ authorize(char *username, const char *password)
         }
 
         while (fgets(l, sizeof(l), fp) != NULL) {
-                if (sscanf(l, "%64[^:]:%128s", u, passwd) != 2)
+                if (sscanf(l, "%64[^:]:%64s", u, passwd) != 2)
                     continue;       /* Ignore malformed lines */
                 debug( "user: %s,  passwd: XXXX", u);
-                min_len = strlen(u);
-                if (username_l < min_len) {
-                  min_len = username_l;
-                }
-                if (!safe_cmp((unsigned char *)username, (unsigned char *)u, min_len)) {
-                        size_t newpw_l;
-                        min_len = strlen(passwd);
+                if (!strcmp(username, u)) {
                         newpw = crypt(password, passwd);
-                        newpw_l = strlen(newpw);
-                        if (newpw_l < min_len) {
-                          min_len = newpw_l;
-                        }
                         debug( "user: %s,  passwd: XXXXX", u );
-                        authorized = ( safe_cmp ((unsigned char *)newpw, (unsigned char *)passwd, min_len) == 0 );
+                        authorized = ( strcmp (newpw, passwd) == 0 );
                     break;
                 }
        }

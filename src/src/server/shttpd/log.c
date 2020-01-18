@@ -8,13 +8,13 @@
  * this stuff is worth it, you can buy me a beer in return.
  */
 
-#include "defs.h"
+#include "shttpd_defs.h"
 
 /*
  * Log function
  */
 void
-_shttpd_elog(int flags, struct conn *c, const char *fmt, ...)
+elog(int flags, struct conn *c, const char *fmt, ...)
 {
 	char	date[64], buf[URI_MAX];
 	int	len;
@@ -22,7 +22,7 @@ _shttpd_elog(int flags, struct conn *c, const char *fmt, ...)
 	va_list	ap;
 
 	/* Print to stderr */
-	if (c == NULL || !IS_TRUE(c->ctx, OPT_INETD)) {
+	if (c == NULL || c->ctx->inetd_mode == 0) {
 		va_start(ap, fmt);
 		(void) vfprintf(stderr, fmt, ap);
 		(void) fputc('\n', stderr);
@@ -30,9 +30,9 @@ _shttpd_elog(int flags, struct conn *c, const char *fmt, ...)
 	}
 
 	strftime(date, sizeof(date), "%a %b %d %H:%M:%S %Y",
-	    localtime(&_shttpd_current_time));
+	    localtime(&current_time));
 
-	len = _shttpd_snprintf(buf, sizeof(buf),
+	len = snprintf(buf, sizeof(buf),
 	    "[%s] [error] [client %s] \"%s\" ",
 	    date, c ? inet_ntoa(c->sa.u.sin.sin_addr) : "-",
 	    c && c->request ? c->request : "-");
@@ -48,12 +48,21 @@ _shttpd_elog(int flags, struct conn *c, const char *fmt, ...)
 		(void) fflush(fp);
 	}
 
+#if defined(_WIN32) && !defined(NO_GUI)
+	{
+		extern HWND	hLog;
+
+		if (hLog != NULL)
+			SendMessage(hLog, WM_APP, 0, (LPARAM) buf);
+	}
+#endif /* _WIN32 */
+
 	if (flags & E_FATAL)
 		exit(EXIT_FAILURE);
 }
-
+#if 0
 void
-_shttpd_log_access(FILE *fp, const struct conn *c)
+log_access(FILE *fp, const struct conn *c)
 {
 	static const struct vec	dash = {"-", 1};
 
@@ -76,12 +85,12 @@ _shttpd_log_access(FILE *fp, const struct conn *c)
 	}
 
 	(void) strftime(date, sizeof(date), "%d/%b/%Y:%H:%M:%S",
-			localtime(&c->birth_time));
+			localtime(&current_time));
 
-	(void) _shttpd_snprintf(buf, sizeof(buf),
+	(void) snprintf(buf, sizeof(buf),
 	    "%s - %.*s [%s %+05d] \"%s\" %d %lu %s%.*s%s %s%.*s%s",
 	    inet_ntoa(c->sa.u.sin.sin_addr), user->len, user->ptr,
-	    date, _shttpd_tz_offset, c->request ? c->request : "-",
+	    date, tz_offset, c->request ? c->request : "-",
 	    c->status, (unsigned long) c->loc.io.total,
 	    q1, referer->len, referer->ptr, q1,
 	    q2, user_agent->len, user_agent->ptr, q2);
@@ -90,4 +99,14 @@ _shttpd_log_access(FILE *fp, const struct conn *c)
 		(void) fprintf(fp, "%s\n", buf);
 		(void) fflush(fp);
 	}
+
+#if defined(_WIN32) && !defined(NO_GUI)
+	{
+		extern HWND	hLog;
+
+		if (hLog != NULL)
+			SendMessage(hLog, WM_APP, 0, (LPARAM) buf);
+	}
+#endif /* _WIN32 */
 }
+#endif

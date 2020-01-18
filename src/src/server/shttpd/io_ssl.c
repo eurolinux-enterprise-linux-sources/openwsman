@@ -8,7 +8,7 @@
  * this stuff is worth it, you can buy me a beer in return.
  */
 
-#include "defs.h"
+#include "shttpd_defs.h"
 
 #if !defined(NO_SSL)
 struct ssl_func	ssl_sw[] = {
@@ -25,37 +25,41 @@ struct ssl_func	ssl_sw[] = {
 	{"SSL_library_init",		{0}},
 	{"SSL_CTX_use_PrivateKey_file",	{0}},
 	{"SSL_CTX_use_certificate_file",{0}},
+	{"SSL_CTX_free", {0}},
+	{"SSL_pending", {0}},
+	{"SSL_CTX_use_certificate_chain_file",{0}},
 	{NULL,				{0}}
 };
 
 void
-_shttpd_ssl_handshake(struct stream *stream)
+ssl_handshake(struct stream *stream)
 {
 	int	n;
 
-	if ((n = SSL_accept(stream->chan.ssl.ssl)) == 1) {
-		DBG(("handshake: SSL accepted"));
-		stream->flags |= FLAG_SSL_ACCEPTED;
-	} else {
+	if ((n = SSL_accept(stream->chan.ssl.ssl)) == 0) {
 		n = SSL_get_error(stream->chan.ssl.ssl, n);
 		if (n != SSL_ERROR_WANT_READ && n != SSL_ERROR_WANT_WRITE)
 			stream->flags |= FLAG_CLOSED;
-		DBG(("SSL_accept error %d", n));
+		elog(E_LOG, stream->conn, "SSL_accept error %d", n);
+	} else {
+		DBG(("handshake: SSL accepted"));
+		stream->flags |= FLAG_SSL_ACCEPTED;
 	}
 }
 
 static int
 read_ssl(struct stream *stream, void *buf, size_t len)
 {
-	int	nread = -1;
+	int	nread = 0;
 
 	assert(stream->chan.ssl.ssl != NULL);
 
 	if (!(stream->flags & FLAG_SSL_ACCEPTED))
-		_shttpd_ssl_handshake(stream);
+		ssl_handshake(stream);
 
 	if (stream->flags & FLAG_SSL_ACCEPTED)
 		nread = SSL_read(stream->chan.ssl.ssl, buf, len);
+	ERR_print_errors_fp(stderr);
 
 	return (nread);
 }
@@ -63,8 +67,11 @@ read_ssl(struct stream *stream, void *buf, size_t len)
 static int
 write_ssl(struct stream *stream, const void *buf, size_t len)
 {
+	int nwrite = 0;
 	assert(stream->chan.ssl.ssl != NULL);
-	return (SSL_write(stream->chan.ssl.ssl, buf, len));
+	nwrite = SSL_write(stream->chan.ssl.ssl, buf, len);
+	ERR_print_errors_fp(stderr);
+	return nwrite;
 }
 
 static void
@@ -72,11 +79,12 @@ close_ssl(struct stream *stream)
 {
 	assert(stream->chan.ssl.sock != -1);
 	assert(stream->chan.ssl.ssl != NULL);
+	shutdown(stream->chan.ssl.sock,SHUT_RDWR);
 	(void) closesocket(stream->chan.ssl.sock);
 	SSL_free(stream->chan.ssl.ssl);
 }
 
-const struct io_class	_shttpd_io_ssl =  {
+const struct io_class	io_ssl =  {
 	"ssl",
 	read_ssl,
 	write_ssl,

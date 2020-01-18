@@ -6,14 +6,11 @@ enable_testing()
 
 add_subdirectory(tests)
 
-EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print (RbConfig::CONFIG['ruby_version']||RbConfig::CONFIG['RUBY_PROGRAM_VERSION'])" OUTPUT_VARIABLE RUBY_VERSION)
-
 # prefer vendor dirs
 SET(RUBY_WSMAN_LIB_DIR ${RUBY_VENDORLIB_DIR})
 SET(RUBY_WSMAN_ARCH_DIR ${RUBY_VENDORARCH_DIR})
 
 MESSAGE(STATUS "Ruby executable: ${RUBY_EXECUTABLE}")
-MESSAGE(STATUS "Ruby version: ${RUBY_VERSION}")
 MESSAGE(STATUS "Ruby dir: ${RUBY_WSMAN_LIB_DIR}")
 MESSAGE(STATUS "Ruby arch dir: ${RUBY_WSMAN_ARCH_DIR}")
 MESSAGE(STATUS "Ruby include path: ${RUBY_INCLUDE_PATH}")
@@ -25,7 +22,8 @@ SET( SWIG_OUTPUT "${CMAKE_CURRENT_BINARY_DIR}/openwsman_wrap.c" )
 ADD_CUSTOM_COMMAND (
    OUTPUT  ${SWIG_OUTPUT}
    COMMAND ${CMAKE_COMMAND} -E echo_append "Creating wrapper code for Ruby..."
-   COMMAND ${SWIG_EXECUTABLE} -ruby -autorename -DRUBY_VERSION=${RUBY_VERSION_MAJOR}${RUBY_VERSION_MINOR} -I${CMAKE_BINARY_DIR}/bindings -I${CMAKE_SOURCE_DIR}/bindings -I${CMAKE_SOURCE_DIR}/include -o ${SWIG_OUTPUT} ${SWIG_INPUT}
+   COMMAND ${SWIG_EXECUTABLE} -ruby -autorename -DRUBY_VERSION=${RUBY_VERSION_MAJOR}${RUBY_VERSION_MINOR} -features autodoc -I${CMAKE_BINARY_DIR}/bindings -I${CMAKE_SOURCE_DIR}/bindings -I${CMAKE_SOURCE_DIR}/include -o ${SWIG_OUTPUT} ${SWIG_INPUT}
+
    COMMAND ${CMAKE_COMMAND} -E echo "Done."
    WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../*.i
@@ -66,22 +64,26 @@ INSTALL(DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}/openwsman DESTINATION ${RUBY_WSMAN
 
 INSTALL(FILES ${CMAKE_CURRENT_SOURCE_DIR}/openwsman.rb DESTINATION ${RUBY_WSMAN_LIB_DIR})
 
+IF(${RUBY_VERSION_MAJOR} EQUAL 1)
+  IF (${RUBY_VERSION_MINOR} LESS 9)
+
 # rdoc
 SET(rdoc_dir "${CMAKE_CURRENT_BINARY_DIR}/html")
 ADD_CUSTOM_COMMAND (
    OUTPUT ${rdoc_dir}
    COMMAND ${CMAKE_COMMAND} -E echo_append "Creating rdoc documentation ..."
    COMMAND rm -rf ${rdoc_dir}
-   COMMAND ./rdoc ${RUBY_VERSION_MAJOR}.${RUBY_VERSION_MINOR} -o ${rdoc_dir} -t "Openwsman - WS-Management for all" -m README.rdoc README.rdoc ../openwsman.i ../*.i openwsman/*.rb
+   COMMAND ${CMAKE_CURRENT_SOURCE_DIR}/rdoc -o ${rdoc_dir} openwsman.i *.i ruby/openwsman/*.rb
    COMMAND ${CMAKE_COMMAND} -E echo "Done."
-   WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+   WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}/bindings
    DEPENDS ${CMAKE_SOURCE_DIR}/bindings/*.i
    DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/openwsman/*.rb
 )
-
 ADD_CUSTOM_TARGET(ruby_rdoc ALL DEPENDS "${rdoc_dir}")
 ADD_DEPENDENCIES(ruby_rdoc rbwsman)
 
+  ENDIF (${RUBY_VERSION_MINOR} LESS 9)
+ENDIF(${RUBY_VERSION_MAJOR} EQUAL 1)
 
 
 IF( BUILD_RUBY_GEM )
@@ -118,24 +120,20 @@ ADD_CUSTOM_COMMAND (
   COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/../openwsman.c" "ext/openwsman"
   COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/../openwsman.h" "ext/openwsman"
   COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/extconf.rb" "ext/openwsman"
-  COMMAND "cp" "${CMAKE_CURRENT_BINARY_DIR}/../version.i" "ext/openwsman"
-  COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/../*.i" "ext/openwsman"
+  COMMAND "cp" "*.c" "ext/openwsman"
   COMMAND "mkdir" "-p" "ext/ruby"
   COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/helpers.h" "ext/ruby"
 
   COMMAND "mkdir" "-p" "lib/openwsman"
   COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/openwsman.rb" "lib"
   COMMAND "cp" "${CMAKE_CURRENT_SOURCE_DIR}/openwsman/*.rb" "lib/openwsman"
-  COMMAND "cp" "${CMAKE_CURRENT_BINARY_DIR}/openwsman/version.rb" "lib/openwsman"
 
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/extconf.rb
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/openwsman.rb
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/openwsman/*.rb
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/openwsman/*.rb.in
   DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.h
-  DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/../*.i
-  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/../*.i
-  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/openwsman/version.rb
+  DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/*.c
 )
 
 ENDIF( BUILD_RUBY_GEM )
@@ -146,4 +144,4 @@ ENDIF( BUILD_RUBY_GEM )
 
 #
 #
-SET_DIRECTORY_PROPERTIES( PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "ext;lib")
+SET_DIRECTORY_PROPERTIES( PROPERTIES ADDITIONAL_MAKE_CLEAN_FILES "ext;lib;openwsman")

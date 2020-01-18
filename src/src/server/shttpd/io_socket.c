@@ -8,7 +8,7 @@
  * this stuff is worth it, you can buy me a beer in return.
  */
 
-#include "defs.h"
+#include "shttpd_defs.h"
 
 static int
 read_socket(struct stream *stream, void *buf, size_t len)
@@ -28,10 +28,11 @@ static void
 close_socket(struct stream *stream)
 {
 	assert(stream->chan.sock != -1);
+	shutdown(stream->chan.sock,SHUT_RDWR);
 	(void) closesocket(stream->chan.sock);
 }
 
-const struct io_class	_shttpd_io_socket =  {
+const struct io_class	io_socket =  {
 	"socket",
 	read_socket,
 	write_socket,

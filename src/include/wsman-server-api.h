@@ -40,10 +40,7 @@
 extern "C" {
 #endif /* __cplusplus */
 
-typedef struct __Soap *ServerConfig;
-
-ServerConfig *wsman_server_create_config(char *config_file);
-void wsman_server_destroy_config(ServerConfig *config);
+void *wsman_server_create_config(char *config_file);
 void wsman_server_get_response(void *arg, void *msg);
 void wsman_server_read_plugin_config(void *arg, char *config_file);
 void wsman_server_set_subscription_repos(char *repos);

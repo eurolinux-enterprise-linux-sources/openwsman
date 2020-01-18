@@ -4,7 +4,7 @@ After=syslog.target
 
 [Service]
 Type=forking
-ExecStart=@prefix@/sbin/openwsmand -S
+ExecStart=@prefix@/sbin/openwsmand
 
 [Install]
 WantedBy=multi-user.target

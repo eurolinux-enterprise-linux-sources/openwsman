@@ -56,20 +56,20 @@
 
 #include "wsman-epr.h"
 
-char *wsman_epr_selector_by_name(const epr_t *epr, const char* name)
+char *wsman_epr_selector_by_name(epr_t *epr, const char* name)
 {
 	int i;
 	char *value = NULL;
-	key_value_t *ss = epr->refparams.selectorset.selectors;
+	Selector *ss = (Selector *) epr->refparams.selectorset.selectors;
 	if (ss == NULL) {
-			debug("epr->refparams.selectorset.selectors == NULL\n");
+			debug("epr->refparams.selectors.data == NULL\n");
 		return NULL;
 	}
 	for (i = 0; i < epr->refparams.selectorset.count; i++) {
-		key_value_t *s;
+		Selector *s;
 		s = ss + i;
-		if (strcmp(s->key, name) == 0 && s->type == 0) {
-				value =  u_strdup(s->v.text);
+		if (strcmp(s->name, name) == 0 && s->type == 0) {
+				value =  u_strdup(s->value);
 				break;
 		}
 	}
@@ -77,33 +77,33 @@ char *wsman_epr_selector_by_name(const epr_t *epr, const char* name)
 }
 
 
-void wsman_epr_selector_cb(const epr_t *epr, selector_callback cb, void *cb_data)
+void wsman_epr_selector_cb(epr_t *epr, selector_callback cb, void *cb_data)
 {
 	int i;
-	key_value_t *ss = epr->refparams.selectorset.selectors;
+	Selector *ss = (Selector *) epr->refparams.selectorset.selectors;
 	if (ss == NULL) {
-		debug("epr->refparams.selectorset.selectors == NULL\n");
+		debug("epr->refparams.selectors == NULL\n");
 		return;
 	}
 	for (i = 0; i < epr->refparams.selectorset.count; i++) {
-		key_value_t *s;
+		Selector *s;
 		s = ss + i;
-		cb(cb_data, s);
+		cb(cb_data, s->name, s->value);
 	}
 }
 
 void wsman_selectorset_cb(SelectorSet *selectorset, selector_callback cb, void *cb_data)
 {
 	int i;
-	key_value_t *ss = selectorset->selectors;
+	Selector *ss = selectorset->selectors;
 	if (ss == NULL) {
 		debug("epr->refparams.selectors == NULL");
 		return;
 	}
 	for (i = 0; i < selectorset->count; i++) {
-		key_value_t *s;
+		Selector *s;
 		s = ss + i;
-		cb(cb_data, s);
+		cb(cb_data, s->name, s->value);
 	}
 }
 
@@ -121,25 +121,30 @@ epr_t *epr_create(const char *uri, hash_t * selectors, const char *address)
 	if (selectors) {
 		hnode_t        *hn;
 		hscan_t         hs;
-		key_value_t *p;
-		key_value_t *entry;
+		Selector *p;
+		selector_entry *entry;
 		epr->refparams.selectorset.count = hash_count(selectors);
-		epr->refparams.selectorset.selectors = u_malloc(sizeof(key_value_t)*
+		epr->refparams.selectorset.selectors = u_malloc(sizeof(Selector)*
 			epr->refparams.selectorset.count);
 
 		p = epr->refparams.selectorset.selectors;
 		hash_scan_begin(&hs, selectors);
 		while ((hn = hash_scan_next(&hs))) {
-                  entry = (key_value_t *)hnode_get(hn);
-                  if (entry->type == 0) {
-                    key_value_create((char *)hnode_getkey(hn), entry->v.text, NULL, p);
-                    debug("key=%s value=%s", p->key, p->v.text);
-                  }
-                  else {
-                    key_value_create((char *)hnode_getkey(hn), NULL, entry->v.epr, p);
-                    debug("key=%s value=%p(nested epr)", p->key, p->v.epr);
-                  }
-                  p++;
+			p->name = u_strdup((char *)hnode_getkey(hn));
+			entry = (selector_entry *)hnode_get(hn);
+			if(entry->type == 0) {
+				p->type = 0;
+				p->value = u_strdup(entry->entry.text);
+				debug("key = %s value=%s",
+					(char *) hnode_getkey(hn), p->value);
+			}
+			else {
+				p->type = 1;
+				p->value = (char *)epr_copy(entry->entry.eprp);
+				debug("key = %s value=%p(nested epr)",
+					(char *) hnode_getkey(hn), p->value);
+			}
+			p++;
 		}
 	} else {
 		epr->refparams.selectorset.count  = 0;
@@ -148,15 +153,15 @@ epr_t *epr_create(const char *uri, hash_t * selectors, const char *address)
 	return epr;
 }
 
-epr_t *epr_from_string(const char* str)
-{
-	char *p;
+ epr_t *epr_from_string(const char* str)
+ {
+ 	char *p;
 	char *uri;
 	hash_t *selectors = NULL;
 	hash_t *selectors_new = NULL;
 	hnode_t        *hn;
 	hscan_t         hs;
-	key_value_t *entry;
+	selector_entry *entry;
 	epr_t *epr;
 
 	p = strchr(str, '?');
@@ -166,7 +171,9 @@ epr_t *epr_from_string(const char* str)
           selectors_new = hash_create2(HASHCOUNT_T_MAX, 0, 0);
 	  hash_scan_begin(&hs, selectors);
 	  while ((hn = hash_scan_next(&hs))) {
-		entry = key_value_create(NULL, (char *)hnode_get(hn), NULL, NULL);
+		entry = u_malloc(sizeof(selector_entry));
+		entry->type = 0;
+		entry->entry.text = (char *)hnode_get(hn);
 		hash_alloc_insert(selectors_new, hnode_getkey(hn), entry);
 	  }
         }
@@ -183,64 +190,92 @@ epr_t *epr_from_string(const char* str)
 	return epr;
  }
 
-static int epr_add_selector(epr_t *epr, const char *name, const char *text, epr_t *added_epr)
-{
-	int i;
-        key_value_t *p, *new_p;
-	if (epr == NULL) return 0;
-	p = epr->refparams.selectorset.selectors;
+static int epr_add_selector(epr_t *epr, const char *name, selector_entry *selector)
+ {
+ 	int i;
+ 	Selector *p;
+	if(epr == NULL) return 0;
+ 	p = epr->refparams.selectorset.selectors;
 	for(i = 0; i< epr->refparams.selectorset.count; i++) {
-		if(p->key && ( strcmp(name, p->key) == 0 ) ) {
+		if(p->name && ( strcmp(name, p->name) == 0 ) ) {
 			return -1;
 		}
 		p++;
 	}
 	p = epr->refparams.selectorset.selectors;
-	p = u_realloc(p, (epr->refparams.selectorset.count+1) * sizeof(key_value_t));
-	if (p == NULL) return -1;
-        new_p = key_value_create(name, text, added_epr, &(p[epr->refparams.selectorset.count]));
+	p = u_realloc(p, (epr->refparams.selectorset.count+1) * sizeof(Selector));
+	if(p == NULL) return -1;
+	p[epr->refparams.selectorset.count].name = u_strdup(name);
+	p[epr->refparams.selectorset.count].type = selector->type;
+	if(selector->type == 0) {
+		if (selector->entry.text) {
+			p[epr->refparams.selectorset.count].value = u_strdup(selector->entry.text);
+		}
+	} else {
+		p[epr->refparams.selectorset.count].value = (char *)epr_copy(selector->entry.eprp);
+	}
 
 	epr->refparams.selectorset.selectors = p;
 	epr->refparams.selectorset.count++;
 	return 0;
  }
 
-int epr_selector_count(const epr_t *epr) {
+int epr_selector_count(epr_t *epr) {
 	if(epr == NULL) return 0;
 	return epr->refparams.selectorset.count;
 }
 
 int epr_add_selector_text(epr_t *epr, const char *name, const char *text)
 {
-	return epr_add_selector(epr, name, text, NULL);
+	int r;
+	selector_entry *entry;
+	entry = u_malloc(sizeof(selector_entry));
+	entry->type = 0;
+	entry->entry.text = (char *)text;
+	r = epr_add_selector(epr, name, entry);
+	u_free(entry);
+	return r;
 }
 
 int epr_add_selector_epr(epr_t *epr, const char *name, epr_t *added_epr)
 {
-	return epr_add_selector(epr, name, NULL, added_epr);
+	int r;
+	selector_entry *entry;
+	entry = u_malloc(sizeof(selector_entry));
+	entry->type = 1;
+	entry->entry.eprp = added_epr;
+	r = epr_add_selector(epr, name, entry);
+	u_free(entry);
+	return r;
 }
 
 int epr_delete_selector(epr_t *epr, const char *name)
 {
 	int i,k;
 	int count;
-	key_value_t *selectors;
+	Selector *selectors;
 	if(epr == NULL || name == NULL) return 0;
 	count = epr->refparams.selectorset.count;
 	selectors = epr->refparams.selectorset.selectors;
 	for(i =0; i < count; i++) {
-		if(strcmp(name, selectors[i].key) == 0)
+		if(strcmp(name, selectors[i].name) == 0)
 			break;
 	}
 	if(i == count) return -1;
 
-        key_value_destroy(&selectors[i], 1);
-
-	for(k = i; k < count-1; k++) {
-		memcpy(&selectors[k], &selectors[k+1], sizeof(key_value_t));
+	u_free(selectors[i].name);
+	if(selectors[i].type == 0) {
+		u_free(selectors[i].value);
+	}
+	else {
+		epr_destroy((epr_t *)selectors[i].value);
 	}
 
-	epr->refparams.selectorset.selectors = u_realloc(selectors, (count-1)*sizeof(key_value_t));
+	for(k = i; k < count-1; k++) {
+		memcpy(&selectors[k], &selectors[k+1], sizeof(Selector));
+	}
+
+	epr->refparams.selectorset.selectors = u_realloc(selectors, (count-1)*sizeof(Selector));
 	epr->refparams.selectorset.count--;
 
 	return 0;
@@ -249,13 +284,17 @@ int epr_delete_selector(epr_t *epr, const char *name)
 void epr_destroy(epr_t *epr)
 {
 	int i;
-	key_value_t *p;
+	Selector *p;
 	if(epr == NULL) return;
 	u_free(epr->address);
 	u_free(epr->refparams.uri);
 	p = epr->refparams.selectorset.selectors;
 	for(i = 0; i< epr->refparams.selectorset.count; i++) {
-          key_value_destroy(p, 1);
+		u_free(p->name);
+		if(p->type == 0)
+			u_free(p->value);
+		else
+			epr_destroy((epr_t*)p->value);
 		p++;
 	}
 
@@ -264,11 +303,11 @@ void epr_destroy(epr_t *epr)
 
 }
 
-epr_t *epr_copy(const epr_t *epr)
+epr_t *epr_copy(epr_t *epr)
 {
 	int i;
-	key_value_t *p1;
-	key_value_t *p2;
+	Selector *p1;
+	Selector *p2;
 	epr_t *cpy_epr = NULL;
 	if(epr == NULL)
 		return cpy_epr;
@@ -279,25 +318,30 @@ epr_t *epr_copy(const epr_t *epr)
 
 	cpy_epr->refparams.uri = u_strdup(epr->refparams.uri);
 	cpy_epr->refparams.selectorset.count = epr->refparams.selectorset.count;
-	cpy_epr->refparams.selectorset.selectors = u_malloc(sizeof(key_value_t)*
+	cpy_epr->refparams.selectorset.selectors = u_malloc(sizeof(Selector)*
 			epr->refparams.selectorset.count);
 
 	p1 = epr->refparams.selectorset.selectors;
 	p2 = cpy_epr->refparams.selectorset.selectors;
-	for (i = 0; i < epr->refparams.selectorset.count; i++) {
-          key_value_copy(p1, p2);
+	for(i = 0; i < epr->refparams.selectorset.count; i++) {
+		p2->name = u_strdup(p1->name);
+		p2->type = p1->type;
+		if(p1->type == 0)
+			p2->value = u_strdup(p1->value);
+		else
+			p2->value = (char *)epr_copy((epr_t*)p1->value);
 		p1++;
 		p2++;
 	}
 	return cpy_epr;
 }
 
-int epr_cmp(const epr_t *epr1, const epr_t *epr2)
-{
-	int i, j;
-	int matches = 0;
-	key_value_t *p1;
-	key_value_t *p2;
+ int epr_cmp(epr_t *epr1, epr_t *epr2)
+ {
+ 	int i, j;
+ 	int matches = 0;
+	Selector *p1;
+	Selector *p2;
 	assert(epr1 != NULL && epr2 != NULL);
 	//if(strcmp(epr1->address, epr2->address)) return 1;
 
@@ -308,15 +352,15 @@ int epr_cmp(const epr_t *epr1, const epr_t *epr2)
 	for(i = 0; i < epr1->refparams.selectorset.count; i++) {
 		p2 = epr1->refparams.selectorset.selectors;
 		for(j = 0; j < epr2->refparams.selectorset.count; j++, p2++) {
-			if(strcmp(p1->key, p2->key))
+			if(strcmp(p1->name, p2->name))
 				continue;
 			if(p1->type != p2->type)
 				continue;
 			if(p1->type == 0) {
-				if(strcmp(p1->v.text, p2->v.text))
+				if(strcmp(p1->value, p2->value))
 					continue;
 			} else {
-				if (epr_cmp(p1->v.epr, p2->v.epr) == 1) {
+				if (epr_cmp((epr_t*)p1->value, (epr_t*)p2->value) == 1) {
 					continue;
 				}
 			}
@@ -331,12 +375,12 @@ int epr_cmp(const epr_t *epr1, const epr_t *epr2)
 		return 1;
 }
 
-char *epr_to_string(const epr_t *epr)
+char *epr_to_string(epr_t *epr)
 {
   int i, len;
   char *buf, *ptr;
 
-  key_value_t *p = NULL;
+  Selector *p = NULL;
   if (epr == NULL) return NULL;
 
   /* calculate buffer size */
@@ -344,11 +388,11 @@ char *epr_to_string(const epr_t *epr)
 
   p = epr->refparams.selectorset.selectors;
   for(i = 0; i < epr->refparams.selectorset.count; i++) {
-    len += (strlen(p->key) + 1); /* (?|&)key */
+    len += (strlen(p->name) + 1); /* (?|&)key */
     if (p->type == 0)
-      len += (strlen(p->v.text) + 1); /* =value */
+      len += (strlen(p->value) + 1); /* =value */
     else {
-      char *value = epr_to_string(p->v.epr);
+      char *value = epr_to_string((epr_t *)p->value);
       if (value) {
         len += (strlen(value) + 1); /* =value */
         u_free(value);
@@ -365,14 +409,14 @@ char *epr_to_string(const epr_t *epr)
       *ptr++ = '?';
     else
       *ptr++ = '&';
-    strcpy(ptr, p->key);
-    ptr += strlen(p->key);
+    strcpy(ptr, p->name);
+    ptr += strlen(p->name);
     *ptr++ = '=';
     if (p->type == 0) {
-      strcpy(ptr, p->v.text);
-      ptr += strlen(p->v.text);
+      strcpy(ptr, p->value);
+      ptr += strlen(p->value);
     } else {
-      char *value = epr_to_string(p->v.epr);
+      char *value = epr_to_string((epr_t *)p->value);
       if (value) {
         strcpy(ptr, value);
         ptr += strlen(value);
@@ -386,7 +430,7 @@ char *epr_to_string(const epr_t *epr)
 }
 
 
-char *epr_to_txt(const epr_t *epr, const char *ns, const char*epr_node_name)
+char *epr_to_txt(epr_t *epr, const char *ns, const char*epr_node_name)
 {
 	char *buf = NULL;
 	int len;
@@ -402,7 +446,7 @@ char *epr_to_txt(const epr_t *epr, const char *ns, const char*epr_node_name)
 }
 
 
-char *epr_get_resource_uri(const epr_t *epr) {
+char *epr_get_resource_uri(epr_t *epr) {
 	if (epr)
 		return epr->refparams.uri;
 	else
@@ -410,13 +454,13 @@ char *epr_get_resource_uri(const epr_t *epr) {
 }
 
 int epr_serialize(WsXmlNodeH node, const char *ns,
-		const char *epr_node_name, const epr_t *epr, int embedded)
+		const char *epr_node_name, epr_t *epr, int embedded)
 {
 	int i;
 	WsXmlNodeH eprnode = NULL;
 	WsXmlNodeH refparamnode = NULL;
 	WsXmlNodeH selectorsetnode = NULL;
-	key_value_t *p = NULL;
+	Selector *p = NULL;
 	if(epr == NULL) return 0;
 
 	if(epr_node_name) {
@@ -440,12 +484,12 @@ int epr_serialize(WsXmlNodeH node, const char *ns,
 	for(i = 0; i < epr->refparams.selectorset.count; i++) {
 		WsXmlNodeH temp = NULL;
 		if(p->type == 0)
-			temp = ws_xml_add_child(selectorsetnode, XML_NS_WS_MAN, WSM_SELECTOR, p->v.text);
+			temp = ws_xml_add_child(selectorsetnode, XML_NS_WS_MAN, WSM_SELECTOR, p->value);
 		else {
 			temp = ws_xml_add_child(selectorsetnode, XML_NS_WS_MAN, WSM_SELECTOR, NULL);
-			epr_serialize(temp, XML_NS_ADDRESSING, WSA_EPR, p->v.epr, 1);
+			epr_serialize(temp, XML_NS_ADDRESSING, WSA_EPR, (epr_t *)p->value, 1);
 		}
-		ws_xml_add_node_attr(temp, NULL, WSM_NAME, p->key);
+		ws_xml_add_node_attr(temp, NULL, WSM_NAME, p->name);
 		p++;
 	}
 	return 0;
@@ -462,7 +506,7 @@ epr_t *epr_deserialize(WsXmlNodeH node, const char *ns,
 	WsXmlNodeH temp = NULL;
 	WsXmlNodeH selectorsetnode = NULL;
 	WsXmlAttrH attr = NULL;
-	key_value_t *p = NULL;
+	Selector *p = NULL;
 
 	if(epr_node_name) {
 		eprnode = ws_xml_get_child(node, 0, ns, epr_node_name);
@@ -500,21 +544,21 @@ epr_t *epr_deserialize(WsXmlNodeH node, const char *ns,
 	selectorsetnode = ws_xml_get_child(refparamnode, 0, XML_NS_WS_MAN, WSM_SELECTOR_SET);
 	epr->refparams.selectorset.count = ws_xml_get_child_count(selectorsetnode);
 	epr->refparams.selectorset.selectors = u_malloc(epr->refparams.selectorset.count *
-		 sizeof(key_value_t));
+		 sizeof(Selector));
 
 	p = epr->refparams.selectorset.selectors;
 	for(i = 0; i < epr->refparams.selectorset.count; i++) {
 		temp = ws_xml_get_child(selectorsetnode, i, XML_NS_WS_MAN, WSM_SELECTOR);
 		attr = ws_xml_find_node_attr(temp, NULL, "Name");
 		if(attr) {
-			p->key = u_strdup(ws_xml_get_attr_value(attr));
+			p->name = u_strdup(ws_xml_get_attr_value(attr));
 		}
 		if(ws_xml_get_child(temp, 0, XML_NS_ADDRESSING, WSA_EPR)) {
 			p->type = 1;
-			p->v.epr = epr_deserialize(temp, XML_NS_ADDRESSING, WSA_EPR, 1);
+			p->value = (char *)epr_deserialize(temp, XML_NS_ADDRESSING, WSA_EPR, 1);
 		} else {
 			p->type = 0;
-			p->v.text = u_strdup(ws_xml_get_node_text(temp));
+			p->value = u_strdup(ws_xml_get_node_text(temp));
 		}
 		p++;
 	}
@@ -530,8 +574,8 @@ char *get_cimnamespace_from_selectorset(SelectorSet *selectorset)
 {
 	int i = 0;
 	while(i < selectorset->count) {
-		if(strcmp(selectorset->selectors[i].key, CIM_NAMESPACE_SELECTOR) == 0)
-			return selectorset->selectors[i].v.text;
+		if(strcmp(selectorset->selectors[i].name, CIM_NAMESPACE_SELECTOR) == 0)
+			return selectorset->selectors[i].value;
 		i++;
 	}
 	return NULL;

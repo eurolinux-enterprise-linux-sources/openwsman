@@ -122,7 +122,7 @@ int Redirect_Enumerate_EP(WsContextH cntx,
 
     WsXmlNodeH r_header=NULL, r_node=NULL, r_body=NULL, r_opt=NULL;
     WsXmlDocH r_response=NULL;
-    char *resource_uri, *remote_enumContext=NULL;
+    char *resource_uri, *remote_enumContext;
     int op; 
     WsManClient *cl=NULL;
 
@@ -161,7 +161,7 @@ int Redirect_Enumerate_EP(WsContextH cntx,
 
 
 
-    r_response = wsmc_build_envelope_from_response(cl);
+    r_response = ws_xml_duplicate_doc(wsmc_build_envelope_from_response(cl));
 
  
     if (  wsman_is_fault_envelope(r_response)){
@@ -209,8 +209,7 @@ int Redirect_Enumerate_EP(WsContextH cntx,
     }
     
     wsmc_release(cl);
-    if (remote_enumContext != NULL)
-	free(remote_enumContext);
+
     
     return 0;
 
@@ -266,7 +265,7 @@ int Redirect_Pull_EP(WsContextH cntx, WsEnumerateInfo* enumInfo,
     }
 
 
-    response = wsmc_build_envelope_from_response(cl);
+    response = ws_xml_duplicate_doc(wsmc_build_envelope_from_response(cl));
 
    
     if ( ! wsman_is_fault_envelope(response) )

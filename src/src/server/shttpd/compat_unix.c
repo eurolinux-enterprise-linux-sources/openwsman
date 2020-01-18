@@ -8,52 +8,52 @@
  * this stuff is worth it, you can buy me a beer in return.
  */
 
-#include "defs.h"
+#include "shttpd_defs.h"
 
-void
-_shttpd_set_close_on_exec(int fd)
+void 
+set_close_on_exec(int fd)
 {
 	(void) fcntl(fd, F_SETFD, FD_CLOEXEC);
 }
 
 int
-_shttpd_stat(const char *path, struct stat *stp)
+my_stat(const char *path, struct stat *stp)
 {
 	return (stat(path, stp));
 }
 
 int
-_shttpd_open(const char *path, int flags, int mode)
+my_open(const char *path, int flags, int mode)
 {
 	return (open(path, flags, mode));
 }
 
 int
-_shttpd_remove(const char *path)
+my_remove(const char *path)
 {
 	return (remove(path));
 }
 
 int
-_shttpd_rename(const char *path1, const char *path2)
+my_rename(const char *path1, const char *path2)
 {
 	return (rename(path1, path2));
 }
 
 int
-_shttpd_mkdir(const char *path, int mode)
+my_mkdir(const char *path, int mode)
 {
 	return (mkdir(path, mode));
 }
 
 char *
-_shttpd_getcwd(char *buffer, int maxlen)
+my_getcwd(char *buffer, int maxlen)
 {
 	return (getcwd(buffer, maxlen));
 }
 
 int
-_shttpd_set_non_blocking_mode(int fd)
+set_non_blocking_mode(int fd)
 {
 	int	ret = -1;
 	int	flags;
@@ -71,24 +71,22 @@ _shttpd_set_non_blocking_mode(int fd)
 
 #ifndef NO_CGI
 int
-_shttpd_spawn_process(struct conn *c, const char *prog, char *envblk,
+spawn_process(struct conn *c, const char *prog, char *envblk,
 		char *envp[], int sock, const char *dir)
 {
-	int		ret;
-	pid_t		pid;
-	const char	*p, *interp = c->ctx->options[OPT_CGI_INTERPRETER];
+	int	ret;
+	pid_t	pid;
 
 	envblk = NULL;	/* unused */
 
 	if ((pid = vfork()) == -1) {
 
 		ret = -1;
-		_shttpd_elog(E_LOG, c, "redirect: fork: %s", strerror(errno));
+		elog(E_LOG, c, "redirect: fork: %s", strerror(errno));
 
 	} else if (pid == 0) {
 
 		/* Child */
-
 		(void) chdir(dir);
 		(void) dup2(sock, 0);
 		(void) dup2(sock, 1);
@@ -98,22 +96,19 @@ _shttpd_spawn_process(struct conn *c, const char *prog, char *envblk,
 		if (c->ctx->error_log)
 			(void) dup2(fileno(c->ctx->error_log), 2);
 
-		if ((p = strrchr(prog, '/')) != NULL)
-			p++;
-		else
-			p = prog;
-
 		/* Execute CGI program */
-		if (interp == NULL) {
-			(void) execle(p, p, NULL, envp);
-			_shttpd_elog(E_FATAL, c, "redirect: exec(%s)", prog);
+		if (c->ctx->cgi_interpreter == NULL) {
+			(void) execle(prog, prog, NULL, envp);
+			elog(E_FATAL, c, "redirect: exec(%s)", prog);
 		} else {
-			(void) execle(interp, interp, p, NULL, envp);
-			_shttpd_elog(E_FATAL, c, "redirect: exec(%s %s)",
-			    interp, prog);
+			(void) execle(c->ctx->cgi_interpreter,
+			    c->ctx->cgi_interpreter, prog, NULL, envp);
+			elog(E_FATAL, c, "redirect: exec(%s %s)",
+			    c->ctx->cgi_interpreter, prog);
 		}
 
 		/* UNREACHED */
+		ret = -1;
 		exit(EXIT_FAILURE);
 
 	} else {

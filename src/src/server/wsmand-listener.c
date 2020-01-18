@@ -65,6 +65,7 @@
 
 
 #include "shttpd.h"
+#include "adapter.h"
 
 #include "wsman-plugins.h"
 #include "wsmand-listener.h"
@@ -307,7 +308,7 @@ void server_callback(struct shttpd_arg *arg)
 		cim_error = cimxml_msg->status.fault_msg;
 		if (cim_error) {
 			shttpd_printf(arg, "HTTP/1.1 %d %s\r\n", status, fault_reason);
-			shttpd_printf(arg, "CIMError:%d:%s\r\n", cim_error_code, cim_error);
+			shttpd_printf(arg, "CIMError: %s\r\n", cim_error);
 			cimxml_message_destroy(cimxml_msg);
 			goto CONTINUE;
 		}
@@ -342,8 +343,7 @@ void server_callback(struct shttpd_arg *arg)
 DONE:
 
 	if (fault_reason == NULL) {
-		// this is a way to segfault, investigate
-		//fault_reason = shttpd_reason_phrase(status);
+		fault_reason = shttpd_reason_phrase(status);
 	}
 	debug("Response status=%d (%s)", status, fault_reason);
 
@@ -433,29 +433,28 @@ static void protect_uri(struct shttpd_ctx *ctx, char *uri)
 	}
 }
 
-static struct shttpd_ctx *create_shttpd_context(SoapH soap, int port)
+static struct shttpd_ctx *create_shttpd_context(SoapH soap)
 {
 	struct shttpd_ctx *ctx;
-	char *tmps;
-	int len;
-
-	ctx = shttpd_init(0, NULL);
+	if (wsmand_options_get_use_ssl()) {
+		message("ssl certificate: %s", wsmand_options_get_ssl_cert_file());
+		message("Using SSL");
+		ctx = shttpd_init(NULL,
+				  "ssl_certificate",
+				  wsmand_options_get_ssl_cert_file(),
+				  "auth_realm",
+				  AUTHENTICATION_REALM,
+				  NULL);
+	} else {
+		ctx = shttpd_init(NULL,
+				  "auth_realm", AUTHENTICATION_REALM,
+				   NULL);
+	}
 	if (ctx == NULL) {
 		return NULL;
 	}
-	if (wsmand_options_get_use_ssl()) {
-		message("ssl certificate: %s", wsmand_options_get_ssl_cert_file());
-		shttpd_set_option(ctx, "ssl_cert", wsmand_options_get_ssl_cert_file());
-	}
-	len = snprintf(NULL, 0, "%d%s", port, wsmand_options_get_use_ssl() ? "s" : "");
-	tmps = malloc((len+1) * sizeof(char));
-	snprintf(tmps, len+1, "%d%s", port, wsmand_options_get_use_ssl() ? "s" : "");
-	shttpd_set_option(ctx, "ports", tmps);
-	free(tmps);
-	shttpd_set_option(ctx, "auth_realm", AUTHENTICATION_REALM);
 	shttpd_register_uri(ctx, wsmand_options_get_service_path(),
 			    server_callback, (void *) soap);
-	protect_uri(ctx, wsmand_options_get_service_path());
 	shttpd_register_uri(ctx, ANON_IDENTIFY_PATH,
 			    server_callback, (void *) soap);
 
@@ -465,6 +464,7 @@ static struct shttpd_ctx *create_shttpd_context(SoapH soap, int port)
 	protect_uri( ctx, DEFAULT_CIMINDICATION_PATH );
 #endif
 
+	protect_uri( ctx, wsmand_options_get_service_path());
 
 	return ctx;
 }
@@ -608,6 +608,56 @@ static int wsman_setup_thread(pthread_attr_t *pattrs) {
         }
 }
 
+static void *thread_function(void *param)
+{
+    struct thread *thread = param;
+
+    for (;;)
+        shttpd_poll(thread->ctx, 1000);
+
+    return NULL;
+}
+
+
+static struct thread *
+spawn_new_thread(pthread_attr_t pattrs, SoapH soap)
+{
+    struct shttpd_ctx   *ctx;
+    struct thread       *thread;
+    pthread_t           tid;
+	debug("spawning new thread");
+
+    thread  = malloc(sizeof(*thread));
+    ctx = create_shttpd_context(soap);
+
+    assert(ctx != NULL);
+    assert(thread != NULL);
+
+    thread->ctx = ctx;
+    thread->next    = threads;
+    threads     = thread;
+
+	pthread_create(&tid, &pattrs, thread_function, thread);
+
+    return (thread);
+}
+
+
+static struct thread *
+find_not_busy_thread(int *num_threads, int max_connections_per_thread)
+{
+    struct thread   *thread;
+
+    for (thread = threads, *num_threads=0; thread != NULL; thread = thread->next) {
+	debug("Active sockets: %d, Thread Number: %d", shttpd_active(thread->ctx), *num_threads );
+        (*num_threads)++;
+        if (shttpd_active(thread->ctx) < max_connections_per_thread)
+            return (thread);
+	}
+
+    return (NULL);
+}
+
 
 WsManListenerH *wsmand_start_server(dictionary * ini)
 {
@@ -624,21 +674,21 @@ WsManListenerH *wsmand_start_server(dictionary * ini)
 	WsManListenerH *listener = wsman_dispatch_list_new();
 	listener->config = ini;
 	WsContextH cntx = wsman_init_plugins(listener);
-        int num_threads = 0;
-        int max_threads = wsmand_options_get_max_threads();
+        int num_threads=0;
+        int max_threads=wsmand_options_get_max_threads();
         int max_connections_per_thread = wsmand_options_get_max_connections_per_thread();
-        if (max_threads && !max_connections_per_thread) {
+        if(max_threads && !max_connections_per_thread){
                 error("max_threads: %d and max_connections_per_thread : %d", max_threads, max_connections_per_thread);
                 return listener;
         }
 
-	if (cntx == NULL) {
-		return listener;
-	}
 #ifdef ENABLE_EVENTING_SUPPORT
 	wsman_event_init(cntx->soap);
 #endif
 
+	if (cntx == NULL) {
+		return listener;
+	}
 #ifndef HAVE_SSL
 	if (use_ssl) {
 		error("Server configured without SSL support");
@@ -667,7 +717,9 @@ WsManListenerH *wsmand_start_server(dictionary * ini)
 	wsmand_shutdown_add_handler(listener_shutdown_handler,
 				    &continue_working);
 
-	httpd_ctx = create_shttpd_context(soap, port);
+	httpd_ctx = create_shttpd_context(soap);
+
+	lsn = shttpd_listen(httpd_ctx, port, use_ssl);
 
 	if (wsman_setup_thread(&pattrs) == 0 )
 		return listener;
@@ -678,7 +730,24 @@ WsManListenerH *wsmand_start_server(dictionary * ini)
 #endif
 
 	while (continue_working) {
-		shttpd_poll(httpd_ctx, 1000);
-	}
-	return listener;
+		if ((sock = shttpd_accept(lsn, 1000)) == -1) {
+			continue;
+		}
+		debug("Sock %d accepted", sock);
+                if ((thread = find_not_busy_thread(&num_threads, max_connections_per_thread)) == NULL){
+                        if(max_threads){
+                                if(num_threads < max_threads){
+                                        thread = spawn_new_thread(pattrs, soap);
+                                }
+                                else{
+                                        continue;
+                                }
+                        }
+                        else{
+                                thread = spawn_new_thread(pattrs, soap);
+                        }
+		}
+                shttpd_add_socket(thread->ctx, sock, use_ssl);
+        }
+        return listener;
 }

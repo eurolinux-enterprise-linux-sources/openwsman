@@ -1,9 +1,8 @@
 //----------------------------------------------------------------------------
 //
 //  Copyright (C) Intel Corporation, 2003 - 2007.
-//            (C) Red Hat, Inc, 2015
 //
-//  File:       WsmanClient.h
+//  File:       WsmanClient.h 
 //
 //  Contents:   A WS-MAN client interface
 //
@@ -17,7 +16,6 @@
 #include <map>
 #include "Exception.h"
 #include "WsmanFilter.h"
-#include "WsmanOptions.h"
 
 using namespace std;
 using namespace WsmanExceptionNamespace;
@@ -38,22 +36,22 @@ namespace WsmanClientNamespace
 	// Exception thrown if the server returned a soap fault
 	class WsmanSoapFault : public WsmanClientException
 	{
-	private:
+	private:		
 		string soapCodeValue;
 		string soapSubcodeValue;
 		string soapReason;
 		string soapDetail;
 	public:
 		WsmanSoapFault(const char* message,
-			const string &faultCode = string(),
-			const string &faultSubcode = string(),
-			const string &faultReason = string(),
-			const string &faultDetail = string())
+			const string& faultCode = "",
+			const string& faultSubcode = "",
+			const string& faultReason = "", 
+			const string& faultDetail = "")
 			:WsmanClientException(message, WSMAN_SOAP_FAULT)
 		{
 			SetWsmanFaultFields(faultCode, faultSubcode, faultReason, faultDetail);
 		}
-		virtual ~WsmanSoapFault() throw() {}
+		virtual ~WsmanSoapFault() throw() {}		
 		void SetWsmanFaultFields(const string& faultCode,
 			const string& faultSubcode,
 			const string& faultReason,
@@ -69,17 +67,6 @@ namespace WsmanClientNamespace
 		string GetFaultReason() const throw() {return soapReason;}
 		string GetFaultDetail() const throw() {return soapDetail;}
 	};
-
-        // Exception throw if a resource is not found
-        class WsmanResourceNotFound : public WsmanClientException
-        {
-        public:
-                WsmanResourceNotFound(const char *message)
-                    : WsmanClientException(message, WSMAN_RESOURCE_NOT_FOUND)
-                {
-                }
-                virtual ~WsmanResourceNotFound() throw() {}
-        };
 
 	typedef enum {
 		WSMAN_DELIVERY_PUSH = 0,
@@ -108,80 +95,36 @@ namespace WsmanClientNamespace
 
 		// Identify
 		virtual string Identify() const = 0;
-
+		
 		// Creates a new instance of a resource.
-		virtual string Create(
-			const string &resourceUri,
-			const string &xmlData) const = 0;
+		virtual string Create(const string &resourceUri, const string &xmlData) const = 0;
 
 		// Delete a resource.
-		virtual void Delete(
-			const string &resourceUri,
-			const NameValuePairs *s = NULL) const = 0;
+		virtual void Delete(const string &resourceUri, const NameValuePairs *s = NULL) const = 0;
 
-		// Enumerate a resource.
-		virtual void Enumerate(
-			const string &resourceUri,
-			vector<string> &enumRes,
-			const NameValuePairs *s = NULL) const = 0;
-		virtual void Enumerate(
-			const string &resourceUri,
-			WsmanFilter & filter,
-			vector<string> &enumRes) const = 0;
-		virtual void Enumerate(
-			const string &resourceUri,
-			vector<string> &enumRes,
-			const WsmanOptions &options,
-			const WsmanFilter &filter = WsmanFilter()) const = 0;
+		// Enumerate a resource. 
+		virtual void Enumerate(const string &resourceUri, vector<string> &enumRes, const NameValuePairs *s = NULL) const = 0;
+
+		//Enumerate2
+		virtual void Enumerate(const string &resourceUri, WsmanFilter &filter, vector<string> &enumRes) const = 0;
 
 		// Retrieve a resource.
-		virtual string Get(
-			const string &resourceUri,
-			const WsmanOptions &options) const = 0;
-		virtual string Get(
-			const string &resourceUri,
-			const NameValuePairs *s = NULL) const = 0;
+		virtual string Get(const string &resourceUri, const NameValuePairs *s = NULL) const = 0;
 
 		// Update a resource.
-		virtual string Put(
-			const string &resourceUri,
-			const string &content,
-			const NameValuePairs *s = NULL) const = 0;
+		virtual string Put(const string &resourceUri, const string &content, const NameValuePairs *s = NULL) const = 0;
 
 		// Invokes a method and returns the results of the method call.
-		virtual string Invoke(
-			const string &resourceUri,
-			const string &methodName,
-			const WsmanOptions &options) const = 0;
-		virtual string Invoke(
-			const string &resourceUri,
-			const string &methodName,
-			const string &content,
-			const WsmanOptions &options) const = 0;
-		virtual string Invoke(
-			const string &resourceUri,
-			const string &methodName,
-			const string &content,
-			const NameValuePairs *s = NULL) const = 0;
+		virtual string Invoke(const string &resourceUri, const string &methodName, const string &content, const NameValuePairs *s = NULL) const = 0;
 
 		// Submit a subscription
-		virtual string Subscribe(
-			const string &resourceUri,
-			const SubscribeInfo &info,
-			string &subsContext) const = 0;
+		virtual string Subscribe(const string &resourceUri, const SubscribeInfo &info, string &subsContext) const = 0;
 
 		// Renew a subscription
-		virtual string Renew(
-			const string &resourceUri,
-			const string &subsContext,
-			float expire,
-			const NameValuePairs *s = NULL) const = 0;
+		virtual string Renew(const string &resourceUri, const string &subsContext, float expire, const NameValuePairs *s = NULL) const = 0;
 
 		// Terminate a subscription
-		virtual void Unsubscribe(
-			const string &resourceUri,
-			const string &subsContext,
-			const NameValuePairs *s = NULL) const = 0;
+		virtual void Unsubscribe(const string &resourceUri, const string &subsContext, const NameValuePairs *s = NULL) const = 0;
 	};
 } // namespace WsmanClientNamespace
 #endif

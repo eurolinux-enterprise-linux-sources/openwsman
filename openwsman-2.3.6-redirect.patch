@@ -1,0 +1,12 @@
+diff -up openwsman-2.3.6/src/plugins/redirect/redirect.c.orig openwsman-2.3.6/src/plugins/redirect/redirect.c
+--- openwsman-2.3.6/src/plugins/redirect/redirect.c.orig	2014-02-10 12:57:37.736684292 +0100
++++ openwsman-2.3.6/src/plugins/redirect/redirect.c	2014-02-10 12:58:11.927816157 +0100
+@@ -242,7 +242,7 @@ WsManClient* setup_redirect_client(WsCon
+         }
+ 
+ 	if (get_remote_cl_cert()){
+-		wsman_transport_set_cert(cl, get_remote_cert());
++		wsman_transport_set_cert(cl, get_remote_cl_cert());
+ 		if (!get_remote_cainfo())
+                         debug("Warning: cainfo not set to enable SSL operation in Redirect Plugin\n");
+ 

@@ -489,15 +489,15 @@ xml_parser_ns_add(WsXmlNodeH node, const char *uri, const char *prefix)
                          * Compensate for this here.
                          */
 			if (xmlNs == NULL && strcmp(prefix,"xml") == 0
-                            && strcmp(uri, (const char *)XML_XML_NAMESPACE) == 0) {
-				xmlNs = (xmlNsPtr) u_zalloc(sizeof(*xmlNs));
+                            && strcmp(uri,XML_XML_NAMESPACE)== 0) {
+				xmlNs = (xmlNsPtr) u_zalloc(sizeof(xmlNs));
 				if (xmlNs == NULL) {
 					error("Couldn't create a new Namespace structure");	
 					return(NULL);
 				}
 				xmlNs->type = XML_LOCAL_NAMESPACE;
-				xmlNs->href = xmlStrdup((const xmlChar *)uri);
-				xmlNs->prefix = xmlStrdup((const xmlChar *)prefix);
+				xmlNs->href = xmlStrdup(uri);
+				xmlNs->prefix = xmlStrdup(prefix);
 			}
 		}
 	}
@@ -817,7 +817,7 @@ void xml_parser_element_dump(FILE * f, WsXmlDocH doc, WsXmlNodeH node)
 {
 
 	xmlNodePtr n = (xmlNodePtr) node;
-	xmlDocPtr d = (xmlDocPtr) doc->parserDoc;
+	xmlDocPtr d = (xmlDocPtr) doc;
 	xmlElemDump(f, d, n);
 }
 
@@ -903,9 +903,11 @@ int xml_parser_check_xpath(WsXmlDocH doc, const char *expression)
 
 			retval = 1;
 		}
+		xmlXPathFreeContext(ctxt);
 		xmlXPathFreeObject(obj);
+	} else {
+		return 0;
 	}
-	xmlXPathFreeContext(ctxt);
 
 	return retval;
 }
@@ -944,9 +946,11 @@ char *xml_parser_get_xpath_value(WsXmlDocH doc, const char *expression)
 					xmlChildrenNode,
 					1);
 
+		xmlXPathFreeContext(ctxt);
 		xmlXPathFreeObject(obj);
+	} else {
+		return NULL;
 	}
-	xmlXPathFreeContext(ctxt);
 
 	return result;
 }

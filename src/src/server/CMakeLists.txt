@@ -6,20 +6,14 @@ include_directories(${CMAKE_SOURCE_DIR}/include ${CMAKE_SOURCE_DIR}/src/server/s
 SET( CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g" )
 
 SET(openwsmand_SOURCES shttpd/string.c shttpd/shttpd.c shttpd/auth.c shttpd/md5.c shttpd/adapter.c shttpd/cgi.c)
-SET(openwsmand_SOURCES ${openwsmand_SOURCES} shttpd/log.c shttpd/io_socket.c)
+SET(openwsmand_SOURCES ${openwsmand_SOURCES} shttpd/mime_type.c shttpd/config.c shttpd/io_socket.c)
 SET(openwsmand_SOURCES ${openwsmand_SOURCES} shttpd/io_ssl.c shttpd/io_emb.c shttpd/compat_unix.c shttpd/io_dir.c shttpd/io_file.c)
-SET(openwsmand_SOURCES ${openwsmand_SOURCES} shttpd/defs.h shttpd/llist.h shttpd/shttpd.h shttpd/std_includes.h shttpd/io.h shttpd/md5.h shttpd/ssl.h)
+SET(openwsmand_SOURCES ${openwsmand_SOURCES} shttpd/shttpd_defs.h shttpd/llist.h shttpd/shttpd.h shttpd/std_includes.h shttpd/io.h shttpd/md5.h shttpd/ssl.h)
 SET(openwsmand_SOURCES ${openwsmand_SOURCES} shttpd/compat_unix.h shttpd/compat_win32.h shttpd/compat_rtems.h shttpd/adapter.h)
 SET(openwsmand_SOURCES ${openwsmand_SOURCES} wsmand-listener.h wsmand-daemon.c wsmand-daemon.h wsmand-listener.c)
 SET(openwsmand_SOURCES ${openwsmand_SOURCES} gss.c wsmand.c)
 
-EXECUTE_PROCESS(COMMAND "/usr/bin/readlink" "${LIB_INSTALL_DIR}/libssl.so" OUTPUT_VARIABLE SSL_LIB_OUT)
-STRING(REPLACE "\n" "" SSL_LIB "${SSL_LIB_OUT}")
-
-MESSAGE(STATUS "SSL_LIB is at >${SSL_LIB}<")
-
 ADD_DEFINITIONS(-DEMBEDDED -DNO_CGI -DNO_SSI )
-ADD_DEFINITIONS(-DSSL_LIB="\\\"${SSL_LIB}\\\"")
 ADD_DEFINITIONS(-DPACKAGE_PLUGIN_DIR="\\\"${PACKAGE_PLUGIN_DIR}\\\"")
 ADD_DEFINITIONS(-DPACKAGE_AUTH_DIR="\\\"${PACKAGE_AUTH_DIR}\\\"")
 ADD_DEFINITIONS(-DPACKAGE_SUBSCRIPTION_DIR="\\\"${PACKAGE_SUBSCRIPTION_DIR}\\\"")

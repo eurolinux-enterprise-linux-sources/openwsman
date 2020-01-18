@@ -4,10 +4,7 @@
 // Java test for WS-Identify
 //
 
-import org.openwsman.Client;
-import org.openwsman.ClientOptions;
-import org.openwsman.OpenWSManConstants;
-import org.openwsman.XmlDoc;
+import org.openwsman.*;
 
 public class identify {
 

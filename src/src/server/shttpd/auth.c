@@ -8,7 +8,10 @@
  * this stuff is worth it, you can buy me a beer in return.
  */
 
-#include "defs.h"
+#include "shttpd_defs.h"
+#ifdef SHTTPD_GSS
+void do_gss(struct conn *c);
+#endif
 
 #if !defined(NO_AUTH)
 /*
@@ -158,18 +161,16 @@ check_password(int method, const struct vec *ha1, const struct digest *digest)
 	    now - strtoul(dig->nonce, NULL, 10) > 3600 */)
 		return (0);
 
-	md5(a2, &_shttpd_known_http_methods[method], &digest->uri, NULL);
+	md5(a2, &known_http_methods[method], &digest->uri, NULL);
 	vec_a2.ptr = a2;
 	vec_a2.len = sizeof(a2);
 	md5(resp, ha1, &digest->nonce, &digest->nc,
 	    &digest->cnonce, &digest->qop, &vec_a2, NULL);
-	DBG(("%s: uri [%.*s] expected_resp [%.*s] resp [%.*s]",
-	    "check_password", digest->uri.len, digest->uri.ptr,
-	    32, resp, digest->resp.len, digest->resp.ptr));
 
 	return (!memcmp(resp, digest->resp.ptr, 32));
 }
 
+#if 0
 static FILE *
 open_auth_file(struct shttpd_ctx *ctx, const char *path)
 {
@@ -178,32 +179,21 @@ open_auth_file(struct shttpd_ctx *ctx, const char *path)
 	FILE		*fp = NULL;
 	int		fd;
 
-	if (ctx->options[OPT_AUTH_GPASSWD] != NULL) {
+	if (ctx->global_passwd_file) {
 		/* Use global passwords file */
-		_shttpd_snprintf(name, sizeof(name), "%s",
-		    ctx->options[OPT_AUTH_GPASSWD]);
+		snprintf(name, sizeof(name), "%s", ctx->global_passwd_file);
 	} else {
-		/*
-		 * Try to find .htpasswd in requested directory.
-		 * Given the path, create the path to .htpasswd file
-		 * in the same directory. Find the right-most
-		 * directory separator character first. That would be the
-		 * directory name. If directory separator character is not
-		 * found, 'e' will point to 'p'.
-		 */
+		/* Try to find .htpasswd in requested directory */
 		for (p = path, e = p + strlen(p) - 1; e > p; e--)
 			if (IS_DIRSEP_CHAR(*e))
 				break;
 
-		/*
-		 * Make up the path by concatenating directory name and
-		 * .htpasswd file name.
-		 */
-		(void) _shttpd_snprintf(name, sizeof(name), "%.*s/%s",
+		assert(IS_DIRSEP_CHAR(*e));
+		(void) snprintf(name, sizeof(name), "%.*s/%s",
 		    (int) (e - p), p, HTPASSWD);
 	}
 
-	if ((fd = _shttpd_open(name, O_RDONLY, 0)) == -1) {
+	if ((fd = my_open(name, O_RDONLY, 0)) == -1) {
 		DBG(("open_auth_file: open(%s)", name));
 	} else if ((fp = fdopen(fd, "r")) == NULL) {
 		DBG(("open_auth_file: fdopen(%s)", name));
@@ -212,6 +202,7 @@ open_auth_file(struct shttpd_ctx *ctx, const char *path)
 
 	return (fp);
 }
+#endif
 
 /*
  * Parse the line from htpasswd file. Line should be in form of
@@ -246,129 +237,149 @@ parse_htpasswd_line(const char *s, struct vec *user,
 static int
 authorize_digest(struct conn *c, FILE *fp)
 {
-        struct vec      *auth_vec = &c->ch.auth.v_vec;
-        struct vec      *user_vec = &c->ch.user.v_vec;
-        struct vec      user, domain, ha1;
-        struct digest   digest;
-        int             ok = 0;
-        char            line[256];
+	struct vec 	*auth_vec = &c->ch.auth.v_vec;
+	struct vec	*user_vec = &c->ch.user.v_vec;
+	struct vec	user, domain, ha1;
+	struct digest	digest;
+	int		ok = 0;
+	char		line[256];
 
-        parse_authorization_header(auth_vec, &digest);
-        *user_vec = digest.user;
+	parse_authorization_header(auth_vec, &digest);
+	*user_vec = digest.user;
 
-        while (fgets(line, sizeof(line), fp) != NULL) {
+	while (fgets(line, sizeof(line), fp) != NULL) {
 
-                if (!parse_htpasswd_line(line, &user, &domain, &ha1))
-                        continue;
+		if (!parse_htpasswd_line(line, &user, &domain, &ha1))
+			continue;
 
-                DBG(("[%.*s] [%.*s] [%.*s]", user.len, user.ptr,
-                    domain.len, domain.ptr, ha1.len, ha1.ptr));
+		DBG(("[%.*s] [%.*s] [%.*s]", user.len, user.ptr,
+		    domain.len, domain.ptr, ha1.len, ha1.ptr));
 
-                if (vcmp(user_vec, &user) && !memcmp(c->ctx->options[OPT_AUTH_REALM],
-                    domain.ptr, domain.len)) {
-                        ok = check_password(c->method, &ha1, &digest);
-                        break;
-                }
-        }
+		if (vcmp(user_vec, &user) && !memcmp(c->ctx->auth_realm,
+		    domain.ptr, domain.len)) {
+			ok = check_password(c->method, &ha1, &digest);
+			break;
+		}
+	}
 
-        return (ok);
+	return (ok);
 }
 
 int
-_shttpd_check_authorization(struct conn *c, const char *path)
+check_authorization(struct conn *c, const char *path)
 {
-        FILE                    *fp = NULL;
-        int                     authorized = 0;
-        struct vec      *auth_vec = &c->ch.auth.v_vec;
+	FILE			*fp = NULL;
+	int			authorized = 0;
+	struct vec 	*auth_vec = &c->ch.auth.v_vec;
 
-        struct llhead   *lp;
-        struct uri_auth *auth;
-        int digest = 0, basic = 0;
+#ifdef EMBEDDED
+	struct llhead	*lp;
+	struct uri_auth	*auth;
+	int digest = 0, basic = 0;
+#ifdef SHTTPD_GSS
+    int kerberos = 0;
+#endif
 
-        basic_auth_callback cb = NULL;
-        char *p, *pp;
+	basic_auth_callback cb = NULL;
+	char *p, *pp;
+	/* Check, is this URL protected by shttpd_protect_url() */
+#ifdef SHTTPD_GSS
+    /* already authenticated */
+	if(c->gss_ctx != GSS_C_NO_CONTEXT)
+		return 1;
+#endif
 
-        /* Check, is this URL protected by shttpd_protect_url() */
-
-        LL_FOREACH(&c->ctx->uri_auths, lp) {
-                auth = LL_ENTRY(lp, struct uri_auth, link);
-                if (!strncmp(c->uri, auth->uri, strlen(c->uri))) {
-                        if (auth->type == DIGEST_AUTH &&
-                            auth_vec->len > 20 &&
-                            !strncasecmp(auth_vec->ptr, "Digest ", 7)) {
-                                fp = fopen(auth->file_name, "r");
-                                digest = 1;
-                        }
-                        if (auth->type == BASIC_AUTH &&
-                            auth_vec->len > 10 &&
-                            !strncasecmp(auth_vec->ptr, "Basic ", 6)) {
-                                cb = (int (*)(char *, char *)) auth->callback.v_func;
-                                basic = 1;
-                        }
-                        break;
-                }
-        }
-        if (lp == &c->ctx->uri_auths) { //not a protected uri
-                return 1;
+	LL_FOREACH(&c->ctx->uri_auths, lp) {
+		auth = LL_ENTRY(lp, struct uri_auth, link);
+		if (!strncmp(c->uri, auth->uri, strlen(c->uri))) {
+#ifdef SHTTPD_GSS
+			if (!strncasecmp(auth_vec->ptr, "Kerberos ", 9))
+			{
+				kerberos = 1;
+            }
+#endif
+			if (auth->type == DIGEST_AUTH &&
+			    auth_vec->len > 20 &&
+			    !strncasecmp(auth_vec->ptr, "Digest ", 7)) {
+				fp = fopen(auth->file_name, "r");
+				digest = 1;
+			}
+			if (auth->type == BASIC_AUTH &&
+			    auth_vec->len > 10 &&
+			    !strncasecmp(auth_vec->ptr, "Basic ", 6)) {
+				cb = (int (*)(char *, char *)) auth->callback.v_func;
+				basic = 1;
+			}
+			break;
+		}
+	}
+	if (lp == &c->ctx->uri_auths) //not a protected uri
+		return 1;
+#ifdef SHTTPD_GSS
+    if(kerberos == 1)
+    {
+        do_gss(c);
+        return 2;
+    }
+#endif
+	if (digest == 1) {
+		if (fp != NULL) {
+				authorized = authorize_digest(c, fp);
+				(void) fclose(fp);
+				return (authorized);
+		} else
+			return (0);
 	}
 
-        if (digest == 1) {
+	if (basic == 1) {
+		char buf[4096];
+		int l;
+
+		p = (char *) auth_vec->ptr + 5;
+		while ((*p == ' ') || (*p == '\t')) {
+			p++;
+		}
+		pp = p;
+		while ((*p != ' ') && (*p != '\t') && (*p != '\r')
+				&& (*p != '\n') && (*p != 0)) {
+			p++;
+		}
+
+		if (pp == p) {
+			return 0;
+		}
+		*p = 0;
+
+		l = ws_base64_decode(pp, p - pp, buf, 4095);
+		if (l <= 0) {
+			return 0;
+		}
+
+		buf[l] = 0;
+		p = buf;
+		pp = p;
+		p = strchr(p, ':');
+		if (p == NULL) {
+			return 0;
+		}
+		*p++ = 0;
+		authorized = cb(pp, p);
+	} else {
 		return 0;
-                if (fp != NULL) {
-                                authorized = authorize_digest(c, fp);
-                                (void) fclose(fp);
-                                return (authorized);
-                } else
-                        return (0);
-        }
+	}
 
-        if (basic == 1) {
-                char buf[4096];
-                int l;
-
-                p = (char *) auth_vec->ptr + 5;
-                while ((*p == ' ') || (*p == '\t')) {
-                        p++;
-                }
-                pp = p;
-                while ((*p != ' ') && (*p != '\t') && (*p != '\r')
-                                && (*p != '\n') && (*p != 0)) {
-                        p++;
-                }
-
-                if (pp == p) {
-                        return 0;
-                }
-                *p = 0;
-
-                l = ws_base64_decode(pp, p - pp, buf, 4095);
-                if (l <= 0) {
-                        return 0;
-                }
-
-                buf[l] = 0;
-                p = buf;
-                pp = p;
-                p = strchr(p, ':');
-                if (p == NULL) {
-                        return 0;
-                }
-                *p++ = 0;
-                authorized = cb(pp, p);
-        } else {
-                return 0;
-        }
+#endif /* EMBEDDED */
 
 	return (authorized);
 }
 
 int
-_shttpd_is_authorized_for_put(struct conn *c)
+is_authorized_for_put(struct conn *c)
 {
 	FILE	*fp;
 	int	ret = 0;
 
-	if ((fp = fopen(c->ctx->options[OPT_AUTH_PUT], "r")) != NULL) {
+	if ((fp = fopen(c->ctx->put_auth_file, "r")) != NULL) {
 		ret = authorize_digest(c, fp);
 		(void) fclose(fp);
 	}
@@ -376,48 +387,46 @@ _shttpd_is_authorized_for_put(struct conn *c)
 	return (ret);
 }
 
-
 void
-_shttpd_send_authorization_request(struct conn *c)
+send_authorization_request(struct conn *c)
 {
-        char    buf[512];
-        int n = 0;
-        int b = 0, d = 0;
+	char	buf[512];
+	int n = 0;
+	int b = 0, d = 0;
 
-        struct llhead   *lp;
-        struct uri_auth *auth;
+	struct llhead	*lp;
+	struct uri_auth	*auth;
 
-        n = snprintf(buf, sizeof(buf), "Unauthorized\r\n");
-        LL_FOREACH(&c->ctx->uri_auths, lp) {
-                auth = LL_ENTRY(lp, struct uri_auth, link);
-                if (auth->type == DIGEST_AUTH && d == 0) {
-                                if (b ) {
-                                                n += snprintf(buf +n, sizeof(buf) - n, "\r\n");
-                                }
-                                n += snprintf(buf +n, sizeof(buf) - n,
-                        "WWW-Authenticate: Digest qop=\"auth\", realm=\"%s\", "
-                        "nonce=\"%lu\"", c->ctx->options[OPT_AUTH_REALM], (unsigned long) _shttpd_current_time);
-                                d = 1;
-                }
-                if (auth->type == BASIC_AUTH && b == 0) {
-                                if (d) {
-                                                n += snprintf(buf +n, sizeof(buf) - n, "\r\n");
-                                }
-                                n +=  snprintf(buf +n, sizeof(buf) - n,
-                        "WWW-Authenticate: Basic realm=\"%s\"", c->ctx->options[OPT_AUTH_REALM]);
-                                b = 1;
-                }
-        }
+	n = snprintf(buf, sizeof(buf), "Unauthorized\r\n");
+	LL_FOREACH(&c->ctx->uri_auths, lp) {
+		auth = LL_ENTRY(lp, struct uri_auth, link);
+		if (auth->type == DIGEST_AUTH && d == 0) {
+				if (b ) {
+						n += snprintf(buf +n, sizeof(buf) - n, "\r\n");
+				}
+				n += snprintf(buf +n, sizeof(buf) - n,
+	    		"WWW-Authenticate: Digest qop=\"auth\", realm=\"%s\", "
+	    		"nonce=\"%lu\"", c->ctx->auth_realm, (unsigned long) current_time);
+				d = 1;
+		}
+		if (auth->type == BASIC_AUTH && b == 0) {
+				if (d) {
+						n += snprintf(buf +n, sizeof(buf) - n, "\r\n");
+				}
+				n +=  snprintf(buf +n, sizeof(buf) - n,
+	    		"WWW-Authenticate: Basic realm=\"%s\"", c->ctx->auth_realm);
+				b = 1;
+		}
+	}
 
-	_shttpd_send_server_error(c, 401, buf);
+	send_server_error(c, 401, buf);
 }
-
 
 /*
  * Edit the passwords file.
  */
 int
-_shttpd_edit_passwords(const char *fname, const char *domain,
+edit_passwords(const char *fname, const char *domain,
 		const char *user, const char *pass)
 {
 	int		ret = EXIT_SUCCESS, found = 0;
@@ -425,7 +434,7 @@ _shttpd_edit_passwords(const char *fname, const char *domain,
 	char		line[512], tmp[FILENAME_MAX], ha1[32];
 	FILE		*fp = NULL, *fp2 = NULL;
 
-	(void) _shttpd_snprintf(tmp, sizeof(tmp), "%s.tmp", fname);
+	(void) snprintf(tmp, sizeof(tmp), "%s.tmp", fname);
 
 	/* Create the file if does not exist */
 	if ((fp = fopen(fname, "a+")))
@@ -433,11 +442,9 @@ _shttpd_edit_passwords(const char *fname, const char *domain,
 
 	/* Open the given file and temporary file */
 	if ((fp = fopen(fname, "r")) == NULL)
-		_shttpd_elog(E_FATAL, NULL,
-		    "Cannot open %s: %s", fname, strerror(errno));
+		elog(E_FATAL, 0, "Cannot open %s: %s", fname, strerror(errno));
 	else if ((fp2 = fopen(tmp, "w+")) == NULL)
-		_shttpd_elog(E_FATAL, NULL,
-		    "Cannot open %s: %s", tmp, strerror(errno));
+		elog(E_FATAL, 0, "Cannot open %s: %s", tmp, strerror(errno));
 
 	p.ptr = pass;
 	p.len = strlen(pass);
@@ -478,8 +485,8 @@ _shttpd_edit_passwords(const char *fname, const char *domain,
 	(void) fclose(fp2);
 
 	/* Put the temp file in place of real file */
-	(void) _shttpd_remove(fname);
-	(void) _shttpd_rename(tmp, fname);
+	(void) remove(fname);
+	(void) rename(tmp, fname);
 
 	return (ret);
 }

@@ -49,17 +49,17 @@ int main(void)
 			    return 1;
 		    printf("Resource uri: %s\n", epr->refparams.uri );
 		    int i;
-		    key_value_t *ss =
-			    (key_value_t *) epr->refparams.selectorset.selectors;
+		    Selector *ss =
+			    (Selector *) epr->refparams.selectorset.selectors;
 		    if (ss == NULL) {
 			    debug("epr->refparams.selectors.data == NULL\n");
 			    return 1;
 		    }
 		    for (i = 0; i < epr->refparams.selectorset.count; i++) {
-			    key_value_t *s;
+			    Selector *s;
 			    s = ss + i;
-			    printf("%s", s->key);
-			    printf("  =  %s\n", s->v.text);
+			    printf("%s", s->name );
+			    printf("  =  %s\n", s->value);
 		    }
 	    }
     }

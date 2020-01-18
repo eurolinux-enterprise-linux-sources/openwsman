@@ -46,10 +46,8 @@
 #include <curl/curl.h>
 #include <curl/easy.h>
 
-#ifdef ENABLE_EVENTING_SUPPORT
 #include <openssl/opensslv.h>
 #include <openssl/ssl.h>
-#endif
 
 #include "u/libu.h"
 #include "wsman-types.h"
@@ -184,8 +182,6 @@ convert_to_last_error(CURLcode r)
 		return WS_LASTERR_TOO_MANY_REDIRECTS;
 	case CURLE_SSL_CONNECT_ERROR:
 		return WS_LASTERR_SSL_CONNECT_ERROR;
-        case CURLE_BAD_FUNCTION_ARGUMENT:
-                return WS_LASTERR_CURL_BAD_FUNCTION_ARG;
 	case CURLE_SSL_PEER_CERTIFICATE:
 		return WS_LASTERR_SSL_PEER_CERTIFICATE;
 	case CURLE_SSL_ENGINE_NOTFOUND:
@@ -270,10 +266,6 @@ init_curl_transport(WsManClient *cl)
 {
 	CURL *curl;
 	CURLcode r = CURLE_OK;
-        char *sslhack;
-        long sslversion;
-        dictionary *ini = iniparser_new(wsmc_get_conffile(cl));
-
 #define curl_err(str)  debug("Error = %d (%s); %s", \
 		r, curl_easy_strerror(r), str);
 	curl = curl_easy_init();
@@ -282,25 +274,16 @@ init_curl_transport(WsManClient *cl)
 		debug("Could not init easy curl");
 		goto DONE;
 	}
-        // client:curlopt_nosignal
-        if (ini) {
-          int nosignal = iniparser_getint(ini, "client:curlopt_nosignal", 0);
-          r = curl_easy_setopt(curl, CURLOPT_NOSIGNAL, nosignal);
-          if (r != 0) {
-            curl_err("curl_easy_setopt(CURLOPT_NOSIGNAL) failed");
-            goto DONE;
-          }
-        }
 	debug("cl->authentication.verify_peer: %d", cl->authentication.verify_peer );
 	// verify peer
-	r = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, wsman_transport_get_verify_peer(cl)?1:0);
+	r = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, cl->authentication.verify_peer);
 	if (r != 0) {
 		curl_err("curl_easy_setopt(CURLOPT_SSL_VERIFYPEER) failed");
 		goto DONE;
 	}
 
 	// verify host
-	r = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, wsman_transport_get_verify_host(cl)?2:0);
+	r = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYHOST, cl->authentication.verify_host);
 	if (r != 0) {
 		curl_err("curl_easy_setopt(CURLOPT_SSL_VERIFYHOST) failed");
 		goto DONE;
@@ -324,13 +307,17 @@ init_curl_transport(WsManClient *cl)
 	}
 	
 	if (0 != cl->authentication.verify_peer && 0 != cl->authentication.crl_check)
-	{		
+	{
+		dictionary *ini = NULL;
+		
 		if (cl->authentication.crl_file == NULL)
 		{
+			ini = iniparser_new(cl->client_config_file);
 			if (ini != NULL)
 			{
 			        char *crlfile = iniparser_getstr(ini, "client:crlfile");
 				wsman_transport_set_crlfile(cl, crlfile);
+			        iniparser_free(ini);
 			}
 		}
 		if (cl->authentication.crl_file != NULL)
@@ -387,40 +374,12 @@ init_curl_transport(WsManClient *cl)
 		goto DONE;
 	}
 
-        /* enforce specific ssl version if requested */
-        sslhack = getenv("OPENWSMAN_CURL_TRANSPORT_SSLVERSION");
-        if (sslhack == NULL) {
-          sslversion = CURL_SSLVERSION_DEFAULT;
-        } else if (!strcmp(sslhack,"tlsv1")) {
-          sslversion = CURL_SSLVERSION_TLSv1;
-        } else if (!strcmp(sslhack,"sslv2")) {
-          sslversion = CURL_SSLVERSION_SSLv2;
-        } else if (!strcmp(sslhack,"sslv3")) {
-          sslversion = CURL_SSLVERSION_SSLv3;
-#if LIBCURL_VERSION_NUM >= 0x072200
-        } else if (!strcmp(sslhack,"tlsv1.0")) {
-          sslversion = CURL_SSLVERSION_TLSv1_0;
-        } else if (!strcmp(sslhack,"tlsv1.1")) {
-          sslversion = CURL_SSLVERSION_TLSv1_1;
-        } else if (!strcmp(sslhack,"tlsv1.2")) {
-          sslversion = CURL_SSLVERSION_TLSv1_2;
-#endif
-        }
-        else {
-          sslversion = CURL_SSLVERSION_DEFAULT;
-        }
-        r = curl_easy_setopt(curl, CURLOPT_SSLVERSION, sslversion );
-        if (r != 0) {
-          curl_err("Could not curl_easy_setopt(curl, CURLOPT_SSLVERSION, ..)");
-          goto DONE;
-        }
 
-        iniparser_free(ini);
+
 	return (void *)curl;
  DONE:
 	cl->last_error = convert_to_last_error(r);
 	curl_easy_cleanup(curl);
-        iniparser_free(ini);
 	return NULL;
 #undef curl_err
 }
@@ -446,7 +405,6 @@ wsmc_handler( WsManClient *cl,
 	char *_user = NULL, *_pass = NULL;
 	u_buf_t *response = NULL;
 	//char *soapaction;
-	char *tmp_str = NULL;
 
 	if (!cl->initialized && wsmc_transport_init(cl, NULL)) {
 		cl->last_error = WS_LASTERR_FAILED_INIT;
@@ -454,11 +412,12 @@ wsmc_handler( WsManClient *cl,
 	}
 	if (cl->transport == NULL) {
 		cl->transport = init_curl_transport(cl);
-                if (cl->transport == NULL) {
-                        return;
-                }
 	}
 	curl = (CURL *)cl->transport;
+	if (curl == NULL) {
+		cl->last_error = WS_LASTERR_FAILED_INIT;
+		return;
+	}
 
 	r = curl_easy_setopt(curl, CURLOPT_URL, cl->data.endpoint);
 	if (r != CURLE_OK) {
@@ -483,8 +442,7 @@ wsmc_handler( WsManClient *cl,
 	char content_type[64];
 	snprintf(content_type, 64, "Content-Type: application/soap+xml;charset=%s", cl->content_encoding);
 	headers = curl_slist_append(headers, content_type);
-	tmp_str = wsman_transport_get_agent(cl);
-	usag = malloc(12 + strlen(tmp_str) + 1);
+	usag = malloc(12 + strlen(wsman_transport_get_agent(cl)) + 1);
 	if (usag == NULL) {
 		r = CURLE_OUT_OF_MEMORY;
 		cl->fault_string = u_strdup("Could not malloc memory");
@@ -492,8 +450,7 @@ wsmc_handler( WsManClient *cl,
 		goto DONE;
 	}
 
-	sprintf(usag, "User-Agent: %s", tmp_str);
-	free(tmp_str);
+	sprintf(usag, "User-Agent: %s", wsman_transport_get_agent(cl));
 	headers = curl_slist_append(headers, usag);
 
 #if 0
@@ -628,7 +585,6 @@ wsmc_handler( WsManClient *cl,
 					 */
 					r = 67;
 #endif
-                    cl->fault_string = u_strdup(curl_easy_strerror(r));
                     curl_err("user/password wrong or empty.");
 		    break;
                 }

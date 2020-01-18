@@ -94,13 +94,13 @@ ws_xml_make_default_prefix(WsXmlNodeH node,
 		for (i = 0; g_wsNsData[i].uri != NULL; i++) {
 			WsXmlNsData *nsd = &g_wsNsData[i];
 			if (strcmp(uri, nsd->uri) == 0 && nsd->prefix) {
-				snprintf(buf, bufsize, "%s",  nsd->prefix );
+				sprintf(buf, "%s",  nsd->prefix );
 				return;
 			}
 		}
 	}
 	if(g_wsNsData[i].uri == NULL && bufsize >= 12)
-		snprintf(buf, bufsize, "n%lu", ++doc->prefixIndex);
+		sprintf(buf, "n%lu", ++doc->prefixIndex);
 	else
 		buf[0] = 0;
 }

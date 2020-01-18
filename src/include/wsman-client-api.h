@@ -46,7 +46,6 @@ extern "C" {
 #include "wsman-xml-serializer.h"
 #include "wsman-epr.h"
 #include "wsman-filter.h"
-#include "u/list.h"
 
 /**
  * @defgroup Client Client
@@ -106,7 +105,6 @@ typedef enum {
 		// accepted and we failed to login
 
 		WS_LASTERR_BAD_CRL_FILE, //bad CRL file provided (Format, Path or permission)
-		WS_LASTERR_CURL_BAD_FUNCTION_ARG, // bad function arg calling curl
 		WS_LASTERR_LAST	// never use!
 	} WS_LASTERR_Code;
 
@@ -188,15 +186,14 @@ typedef enum {
 		char *delivery_certificatethumbprint; // certificate thumbprint of event sink, if it is necessary
 		float heartbeat_interval;
 		float expires;
-		list_t *selectors;
-		list_t *properties; /* keep properties sorted */
+		hash_t *selectors;
+		hash_t *properties;
 		unsigned int timeout;
 		unsigned int max_envelope_size;
 		unsigned int max_elements;
-		hash_t *options; /* for WSM_OPTION_SET */
-                char *locale; /* Sect. 6.3: wsman:Locale */
-          char *__reserved[16]; /* reserved for future extensions */
 	} client_opt_t;
+
+
 
 	struct _WsManFault {
 		const char *code;
@@ -205,6 +202,7 @@ typedef enum {
 		const char *fault_detail;
 	};
 	typedef struct _WsManFault WsManFault;
+
 
 
 	/**
@@ -756,30 +754,17 @@ typedef enum {
 
 	void wsmc_set_filter(filter_t *filter, client_opt_t * options);
 
-        void wsmc_add_option(client_opt_t * options,
-			     const char *key, const char *value);
-
 	void wsmc_add_selector(client_opt_t * options,
 				       const char *key, const char *value);
 
-	void wsmc_add_selector_epr(client_opt_t * options,
-				       const char *key, const epr_t *value);
-
 	void wsmc_add_property(client_opt_t * options,
 				       const char *key, const char *value);
-
-        void wsmc_add_property_epr(client_opt_t * options,
-                                   const char *key, const epr_t *value);
 
         void wsmc_set_cim_ns(const char *delivery_uri, client_opt_t * options);
   
         void wsmc_set_fragment(const char *fragment, client_opt_t * options);
 
         void wsmc_set_reference(const char *reference, client_opt_t * options);
-
-  /* getter/setter for request locale, Section 6.3 of DSP0226 */
-  void wsmc_set_locale(client_opt_t * options, const char *locale);
-  char *wsmc_get_locale(client_opt_t * options);
 
 	/* Misc */
 
@@ -827,6 +812,7 @@ typedef enum {
 
 	void
 	wsmc_set_delivery_security_mode(WsManDeliverySecurityMode delivery_sec_mode, client_opt_t * options);
+
 
 /** @} */
 

@@ -78,7 +78,6 @@ static int use_digest = 0;
 static char *ssl_key_file = NULL;
 static char *service_path = DEFAULT_SERVICE_PATH;
 static char *ssl_cert_file = NULL;
-static char *ssl_disabled_protocols = NULL;
 static char *pid_file = DEFAULT_PID_PATH;
 static char *uri_subscription_repository = DEFAULT_SUBSCRIPTION_REPOSITORY;
 static int daemon_flag = 0;
@@ -95,6 +94,7 @@ static char *custom_identify_file = NULL;
 static char *basic_authenticator_arg = NULL;
 static char *basic_authenticator = DEFAULT_BASIC_AUTH;
 static int max_threads = 1;
+static int min_threads = 4;
 static unsigned long enumIdleTimeout = 100;
 static char *thread_stack_size="0";
 static int max_connections_per_thread=20;
@@ -146,7 +146,7 @@ int wsmand_parse_options(int argc, char **argv)
 		retval = 0;
 	}
 	if (version) {
-		fprintf(stdout, PACKAGE_NAME " " PACKAGE_VERSION "\n\n");
+		fprintf(stdout, PACKAGE_NAME " " PACKAGE_VERSION " (" PACKAGE_BUILDTS ")\n\n");
 		exit(0);
 	}
 	
@@ -177,7 +177,6 @@ int wsmand_read_config(dictionary * ini)
 	    iniparser_getstring(ini, "server:service_path", "/wsman");
 	ssl_key_file = iniparser_getstr(ini, "server:ssl_key_file");
 	ssl_cert_file = iniparser_getstr(ini, "server:ssl_cert_file");
-        ssl_disabled_protocols = iniparser_getstr(ini, "server:ssl_disabled_protocols");
 	use_ipv4 = iniparser_getboolean(ini, "server:ipv4", 1);
 #ifdef ENABLE_IPV6
         use_ipv6 = iniparser_getboolean(ini, "server:ipv6", 1);
@@ -200,9 +199,10 @@ int wsmand_read_config(dictionary * ini)
 	basic_authenticator_arg =
 	    iniparser_getstr(ini, "server:basic_authenticator_arg");
 	log_location = iniparser_getstr(ini, "server:log_location");
+	min_threads = iniparser_getint(ini, "server:min_threads", 1);
 	max_threads = iniparser_getint(ini, "server:max_threads", 0);
 	uri_subscription_repository = iniparser_getstring(ini, "server:subs_repository", DEFAULT_SUBSCRIPTION_REPOSITORY);
-        max_connections_per_thread = iniparser_getint(ini, "server:max_connections_per_thread", iniparser_getint(ini, "server:max_connextions_per_thread", 20));
+        max_connections_per_thread = iniparser_getint(ini, "server:max_connextions_per_thread", 20);
         thread_stack_size = iniparser_getstring(ini, "server:thread_stack_size", "0");
 #ifdef ENABLE_EVENTING_SUPPORT
 	wsman_server_set_subscription_repos(uri_subscription_repository);
@@ -343,14 +343,14 @@ char *wsmand_options_get_ssl_cert_file(void)
 	return ssl_cert_file;
 }
 
-char *wsmand_options_get_ssl_disabled_protocols(void)
-{
-	return ssl_disabled_protocols;
-}
-
 int wsmand_options_get_digest(void)
 {
 	return use_digest;
+}
+
+int wsmand_options_get_min_threads(void)
+{
+	return min_threads;
 }
 
 

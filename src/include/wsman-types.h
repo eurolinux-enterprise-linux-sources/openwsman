@@ -68,8 +68,11 @@ struct __WsXmlNs
 };
 typedef struct __WsXmlNs* WsXmlNsH;
 
+
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
 
 #endif
+
+

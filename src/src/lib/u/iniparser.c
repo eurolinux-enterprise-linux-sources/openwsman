@@ -31,7 +31,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <errno.h>
 #ifndef WIN32
 #include <unistd.h>
 #endif
@@ -49,19 +48,21 @@ extern "C" {
 /**
   @brief    Convert a string to lowercase.
   @param    s   String to convert.
-  @param    l   Pointer to destination string.
-  @return   ptr to the destination string.
+  @return   ptr to statically allocated string.
 
-  This function returns a pointer to string containing
-  a lowercased version of the input string.
+  This function returns a pointer to a statically allocated string
+  containing a lowercased version of the input string. Do not free
+  or modify the returned string! Since the returned string is statically
+  allocated, it will be modified at each function call (not re-entrant).
  */
 /*--------------------------------------------------------------------------*/
 
-static char * strlwc(char * s, char * l)
+static char * strlwc(char * s)
 {
+    static char l[ASCIILINESZ+1];
     int i ;
 
-    if ((s==NULL) || (l==NULL)) return NULL ;
+    if (s==NULL) return NULL ;
     memset(l, 0, ASCIILINESZ+1);
     i=0 ;
     while (s[i] && i<ASCIILINESZ) {
@@ -102,20 +103,23 @@ static char * strskp(char * s)
 /**
   @brief    Remove blanks at the end of a string.
   @param    s   String to parse.
-  @param    l   Pointer to destination string.
-  @return   ptr to the destination string.
+  @return   ptr to statically allocated string.
 
-  This function returns a pointer to an array which contains string,
+  This function returns a pointer to a statically allocated string,
   which is identical to the input string, except that all blank
   characters at the end of the string have been removed.
+  Do not free or modify the returned string! Since the returned string
+  is statically allocated, it will be modified at each function call
+  (not re-entrant).
  */
 /*--------------------------------------------------------------------------*/
 
-static char * strcrop(char * s, char * l)
+static char * strcrop(char * s)
 {
+    static char l[ASCIILINESZ+1];
     char * last ;
 
-    if ((s==NULL) || (l==NULL)) return NULL ;
+    if (s==NULL) return NULL ;
     memset(l, 0, ASCIILINESZ+1);
     strcpy(l, s);
     last = l + strlen(l);
@@ -148,10 +152,6 @@ static void * mem_double(void * ptr, int size)
     void *newptr;
 
     newptr = calloc(2*size, 1);
-    if (newptr == NULL) {
-      fprintf(stderr, "mem_double: allocation failed\n");
-      return NULL;
-    }
     memcpy(newptr, ptr, size);
     free(ptr);
     return newptr ;
@@ -214,20 +214,11 @@ static dictionary * dictionary_new(int size)
     if (size<DICTMINSZ) size=DICTMINSZ ;
 
     d = (dictionary *)calloc(1, sizeof(dictionary));
-    if (d != NULL) {
-      d->size = size ;
-      d->val  = (char **)calloc(size, sizeof(char*));
-      d->key  = (char **)calloc(size, sizeof(char*));
-      d->hash = (unsigned int *)calloc(size, sizeof(unsigned));
-    }
-    if ((d == NULL) || (d->val == NULL) || (d->key == NULL) || (d->hash == NULL)) {
-      fprintf(stderr, "dictionary_new: memory allocation failure\n");
-      free(d->val);
-      free(d->key);
-      free(d->hash);
-      free(d);
-      d = NULL;
-    }
+    d->size = size ;
+    d->val  = (char **)calloc(size, sizeof(char*));
+    d->key  = (char **)calloc(size, sizeof(char*));
+    d->hash = (unsigned int *)calloc(size, sizeof(unsigned));
+
     return d;
 }
 
@@ -284,7 +275,7 @@ static char * dictionary_get(dictionary * d, char * key, char * def)
 
     hash = dictionary_hash(key);
     for (i=0 ; i<d->size ; i++) {
-        if (d->key[i]==NULL)
+        if (d->key==NULL)
             continue ;
         /* Compare hash */
         if (hash==d->hash[i]) {
@@ -320,17 +311,15 @@ static char * dictionary_get(dictionary * d, char * key, char * def)
   content to NULL is equivalent to deleting the variable from the
   dictionary. It is not possible (in this implementation) to have a key in
   the dictionary without value.
-
-  return 0 on success, non-zero on failure.
  */
 /*--------------------------------------------------------------------------*/
 
-static int dictionary_set(dictionary * d, char * key, char * val)
+static void dictionary_set(dictionary * d, char * key, char * val)
 {
     int         i ;
     unsigned    hash ;
 
-    if (d==NULL || key==NULL) return 1 ;
+    if (d==NULL || key==NULL) return ;
 
     /* Compute hash for this key */
     hash = dictionary_hash(key) ;
@@ -346,7 +335,7 @@ static int dictionary_set(dictionary * d, char * key, char * val)
                         free(d->val[i]);
                     d->val[i] = val ? strdup(val) : NULL ;
                     /* Value has been modified: return */
-                    return 0 ;
+                    return ;
                 }
             }
         }
@@ -357,20 +346,8 @@ static int dictionary_set(dictionary * d, char * key, char * val)
 
         /* Reached maximum size: reallocate blackboard */
         d->val  = (char **)mem_double(d->val,  d->size * sizeof(char*)) ;
-        if (d->val == NULL) {
-          errno = -ENOMEM;
-          return 1;
-        }
         d->key  = (char **)mem_double(d->key,  d->size * sizeof(char*)) ;
-        if (d->key == NULL) {
-          errno = -ENOMEM;
-          return 1;
-        }
         d->hash = (unsigned int *)mem_double(d->hash, d->size * sizeof(unsigned)) ;
-        if (d->hash == NULL) {
-          errno = -ENOMEM;
-          return 1;
-        }
 
         /* Double size */
         d->size *= 2 ;
@@ -385,21 +362,10 @@ static int dictionary_set(dictionary * d, char * key, char * val)
     }
     /* Copy key */
     d->key[i]  = strdup(key);
-    if (d->key[i] == NULL) {
-      return 1;
-    }
-    if (val) {
-      d->val[i] = strdup(val);
-      if (d->val[i] == NULL) {
-        return 1;
-      }
-    }
-    else {
-      d->val[i] = NULL;
-    }
+    d->val[i]  = val ? strdup(val) : NULL ;
     d->hash[i] = hash;
     d->n ++ ;
-    return 0;
+    return ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -485,10 +451,8 @@ static void dictionary_dump(dictionary *d, FILE *f)
 #define ASCIILINESZ         1024
 #define INI_INVALID_KEY     ((char*)-1)
 
-/* Private: add an entry to the dictionary
-   return 0 on success, non-zero on error
- */
-static int iniparser_add_entry(
+/* Private: add an entry to the dictionary */
+static void iniparser_add_entry(
     dictionary * d,
     char * sec,
     char * key,
@@ -504,7 +468,8 @@ static int iniparser_add_entry(
     }
 
     /* Add (key,val) to dictionary */
-    return dictionary_set(d, longkey, val);
+    dictionary_set(d, longkey, val);
+    return ;
 }
 
 
@@ -699,11 +664,16 @@ char * iniparser_getstr(dictionary * d, char * key)
 /*--------------------------------------------------------------------------*/
 char * iniparser_getstring(dictionary * d, char * key, char * def)
 {
-    char lc_key[ASCIILINESZ+1];
+    char * lc_key ;
+    char * sval ;
 
     if (d==NULL || key==NULL)
         return def ;
-    return dictionary_get(d, strlwc(key, lc_key), def);
+
+    lc_key = strdup(strlwc(key));
+    sval = dictionary_get(d, lc_key, def);
+    free(lc_key);
+    return sval ;
 }
 
 
@@ -848,9 +818,8 @@ int iniparser_find_entry(
 
 int iniparser_setstr(dictionary * ini, char * entry, char * val)
 {
-    char lc_key[ASCIILINESZ+1];
-
-    return dictionary_set(ini, strlwc(entry, lc_key), val);
+    dictionary_set(ini, strlwc(entry), val);
+    return 0 ;
 }
 
 /*-------------------------------------------------------------------------*/
@@ -865,9 +834,7 @@ int iniparser_setstr(dictionary * ini, char * entry, char * val)
 /*--------------------------------------------------------------------------*/
 void iniparser_unset(dictionary * ini, char * entry)
 {
-    char lc_key[ASCIILINESZ+1];
-
-    dictionary_unset(ini, strlwc(entry, lc_key));
+    dictionary_unset(ini, strlwc(entry));
 }
 
 
@@ -907,10 +874,6 @@ dictionary * iniparser_new(char *ininame)
      * Initialize a new dictionary entry
      */
     d = dictionary_new(0);
-    if (d == NULL) {
-      fclose(ini);
-      return d;
-    }
     lineno = 0 ;
     while (fgets(lin, ASCIILINESZ, ini)!=NULL) {
         lineno++ ;
@@ -918,22 +881,14 @@ dictionary * iniparser_new(char *ininame)
         if (*where==';' || *where=='#' || *where==0)
             continue ; /* Comment lines */
         else {
-            char lc_key[ASCIILINESZ+1];
-
             if (sscanf(where, "[%[^]]", sec)==1) {
                 /* Valid section name */
-                strcpy(sec, strlwc(sec, lc_key));
-                if (iniparser_add_entry(d, sec, NULL, NULL) != 0) {
-                  dictionary_del(d);
-                  fclose(ini);
-                  return NULL;
-                }
+                strcpy(sec, strlwc(sec));
+                iniparser_add_entry(d, sec, NULL, NULL);
             } else if (sscanf (where, "%[^=] = \"%[^\"]\"", key, val) == 2
                    ||  sscanf (where, "%[^=] = '%[^\']'",   key, val) == 2
                    ||  sscanf (where, "%[^=] = %[^;#]",     key, val) == 2) {
-                char crop_key[ASCIILINESZ+1];
-
-                strcpy(key, strlwc(strcrop(key, crop_key), lc_key));
+                strcpy(key, strlwc(strcrop(key)));
                 /*
                  * sscanf cannot handle "" or '' as empty value,
                  * this is done here
@@ -941,13 +896,9 @@ dictionary * iniparser_new(char *ininame)
                 if (!strcmp(val, "\"\"") || !strcmp(val, "''")) {
                     val[0] = (char)0;
                 } else {
-                    strcpy(val, strcrop(val, crop_key));
+                    strcpy(val, strcrop(val));
                 }
-                if (iniparser_add_entry(d, sec, key, val) != 0) {
-                  dictionary_del(d);
-                  fclose(ini);
-                  return NULL;
-                }
+                iniparser_add_entry(d, sec, key, val);
             }
         }
     }

@@ -1,7 +1,7 @@
 #
 # spec file for package openwsman
 #
-# Copyright (c) 2015 SUSE LINUX GmbH, Nuernberg, Germany.
+# Copyright (c) 2012 SUSE LINUX Products GmbH, Nuernberg, Germany.
 #
 # All modifications and additions to the file contributed by third parties
 # remain the property of their copyright owners, unless otherwise agreed
@@ -28,7 +28,7 @@ BuildRequires:  gcc-c++
 BuildRequires:  libxml2-devel
 BuildRequires:  pam-devel
 BuildRequires:  sblim-sfcc-devel
-BuildRequires:  swig >= 2.0.5
+BuildRequires:  swig >= 1.3.30
 
 BuildRequires:  perl
 BuildRequires:  python-devel
@@ -43,7 +43,7 @@ BuildRequires:  curl-devel
 %if 0%{?fedora} == 16 || (0%{?centos_version}>=500 && 0%{?centos_version}<700) || (0%{?rhel_version}>=500 && 0%{?rhel_version}<700)
 BuildRequires:  java-1.6.0-openjdk-devel
 %else
-%if (0%{?fedora} >= 17 && 0%{?fedora} < 22) || 0%{?centos_version} >= 700 || 0%{?rhel_version} >= 700
+%if 0%{?fedora} == 17
 BuildRequires:  java-1.7.0-openjdk-devel
 %else
 BuildRequires:  java-devel
@@ -54,24 +54,12 @@ BuildRequires:  openssl-devel
 BuildRequires:  pkgconfig
 BuildRequires:  ruby
 
-%if 0%{?fedora} + 0%{?rhel_version} + 0%{?centos_version}  > 0
-
-%if 0%{?rhel_version} < 700
+# RHEL6 is missing ruby-devel in OBS
+%if 0%{?rhel_version} != 600
 BuildRequires:  ruby-devel
-%endif
-
-BuildRequires:  ruby-libs
-
-%endif
-
-%if 0%{?rhel_version} >= 700 || 0%{?centos_version} >= 700 || 0%{?fedora} > 16
-BuildRequires:  rubygem-rdoc
-%else
+%if 0%{?fedora} != 17
 BuildRequires:  ruby-rdoc
 %endif
-
-%if 0%{?fedora} > 18
-BuildRequires:  rubypick
 %endif
 
 %if 0%{?fedora} > 0 || 0%{?rhel_version} >= 600  || 0%{?centos_version} >= 600
@@ -82,11 +70,11 @@ BuildRequires:  perl-devel
 %if 0%{?suse_version} > 0
 BuildRequires:  java-devel
 # No jni_md.h on SLE10 :-/
-#%%if 0%{?suse_version} < 1100
+#%if 0%{?suse_version} < 1100
 #BuildRequires:  java-1_5_0-ibm-devel
 #BuildRequires:  libgcj-devel
 #BuildRequires:  update-alternatives
-#%%endif
+#%endif
 
 %if 0%{?suse_version} > 1010
 BuildRequires:  fdupes
@@ -100,6 +88,7 @@ BuildRequires:  openssl-devel
 %endif
 
 %if 0%{?suse_version} > 910
+BuildRequires:  ruby-devel
 %if 0%{?suse_version} < 1110
 # SLE 10 has Ruby 1.8.6 and runs into http://help.rubygems.org/discussions/problems/859-trying-to-install-rubygems
 BuildRequires:  rubygems <= 1.3.7
@@ -107,7 +96,6 @@ BuildRequires:  rubygems <= 1.3.7
 BuildRequires:  rubygems
 %endif
 BuildRequires:  pkg-config
-BuildRequires:  ruby-devel
 %else
 # SLE9
 BuildRequires:  pkgconfig
@@ -125,7 +113,7 @@ Requires(pre):  sed coreutils grep /bin/hostname
 Version:        @VERSION@
 Release:        0
 # Mandriva:
-# Release %%mkrel 1
+# Release %mkrel 1
 Url:            http://www.openwsman.org/
 Summary:        Opensource Implementation of WS-Management
 License:        BSD-3-Clause
@@ -146,14 +134,13 @@ Source4:        %{name}.service
 Opensource Implementation of WS-Management protocol stack
 
 
-%package -n libwsman3
+%package -n libwsman1
 Summary:        Opensource Implementation of WS-Management
 Group:          System/Management
 Provides:       openwsman = %{version}
-Obsoletes:      libwsman1 < %{version}
 Obsoletes:      openwsman < %{version}
 
-%description -n libwsman3
+%description -n libwsman1
 Opensource Implementation of WS-Management protocol stack
 (Common libraries)
 
@@ -163,7 +150,7 @@ Group:          Development/Libraries/C and C++
 Provides:       openwsman-devel = %{version}
 Obsoletes:      openwsman-devel < %{version}
 Requires:       %{name}-server = %{version}
-Requires:       libwsman3 = %{version}
+Requires:       libwsman1 = %{version}
 Requires:       libxml2-devel
 Requires:       pam-devel
 Requires:       sblim-sfcc-devel
@@ -184,7 +171,7 @@ An implementation of the WsmanClient interface using C++
 
 %package -n libwsman_clientpp-devel
 Summary:        C++ bindings to Openwsman Client libraries
-Group:          Development/Libraries/C and C++
+Group:          System/Management
 Requires:       libwsman-devel = %{version}
 Requires:       libwsman_clientpp1 = %{version}
 
@@ -196,24 +183,12 @@ Development files for C++ interface to OpenWSMAN client library.
 Requires(pre):  sed coreutils grep diffutils /bin/hostname
 %if 0%{?suse_version}
 Requires(pre):  fillup
-# for pam_unix2 and pam_pwcheck
-Requires:       pam-modules
 %endif
 Summary:        Openwsman Server and service libraries
 Group:          System/Management
 
 %description server
 Openwsman Server and service libraries
-
-
-%package server-plugin-ruby
-Requires:       openwsman-server
-Summary:        Openwsman Server Plugin for Ruby extensions
-Group:          System/Management
-
-%description server-plugin-ruby
-This package provides a Openwsman server plugin to write a
-WS-Management resource handler in Ruby
 
 
 %package python
@@ -231,13 +206,7 @@ API.
 
 %package ruby
 Requires:       ruby
-
-# RbConfig::CONFIG["ruby_version"] is empty in Fedora > 18 !?
-%if 0%{?fedora} > 18 || 0%{?rhel_version} >= 700 || 0%{?centos_version} >= 700
-%{!?ruby_version: %global ruby_version %(ruby -r rbconfig -e 'print(RbConfig::CONFIG["RUBY_PROGRAM_VERSION"])')}
-%else
 %{!?ruby_version: %global ruby_version %(ruby -r rbconfig -e 'print(RbConfig::CONFIG["ruby_version"])')}
-%endif
 
 %if 0%{?fedora_version} || 0%{?centos_version} || 0%{?rhel_version} || 0%{?fedora} || 0%{?rhel}
 Requires:       ruby(abi) = %{ruby_version}
@@ -271,20 +240,12 @@ Group:          System/Management
 %description ruby
 This package provides Ruby bindings to access the openwsman client API.
 
-%package ruby-docs
-Summary:        HTML documentation for Opendwsman Ruby bindings
-Group:          Documentation/HTML
-
-%description ruby-docs
-This package provides HTML documentation for the Openwsman Ruby
-bindings.
-
 
 %package perl
 %if 0%{?fedora}
 %define perl_version %(eval "`%{__perl} -V:version`"; echo $version)
 %define perl_requires perl(:MODULE_COMPAT_%{perl_version})
-Requires:       %{perl_requires}
+Requires:       %{perl_version}
 %else
 Requires:       perl = %{perl_version}
 %endif
@@ -299,7 +260,7 @@ This package provides Perl bindings to access the openwsman client API.
 
 %package java
 Requires:       java
-Requires:       libwsman3 = %{version}
+Requires:       libwsman1 = %{version}
 Summary:        Java bindings for openwsman client API
 Group:          System/Management
 
@@ -308,16 +269,6 @@ This package provides Java bindings to access the openwsman client API.
 
 
 %endif
-
-%package -n winrs
-Summary:        Windows Remote Shell
-Group:          System/Management
-Requires:       openwsman-ruby = %{version}
-
-%description -n winrs
-This is a command line tool for the Windows Remote Shell protocol. You
-can use it to send shell commands to a remote Windows hosts.
-
 
 %prep
 %setup -q
@@ -335,47 +286,36 @@ export RPM_OPT_FLAGS="$RPM_OPT_FLAGS -DNO_SSL_CALLBACK"
 %endif
 # SLES 10 needs explicit java bytecode target
 %if 0%{?suse_version} == 1010 || 0%{?suse_version} == 1110 
-export EXPLICIT_SOURCE=1.5
 export EXPLICIT_TARGET=1.5
 %endif
 
+export SSL_LIB=`readlink %{_libdir}/libssl.so`
 cd build
-# SLE 10 Java doesn't like EXPLICIT_TARGET any more, disable
 cmake \
   -DCMAKE_INSTALL_PREFIX=/usr \
-%if 0%{?suse_version} == 1010
-  -DBUILD_JAVA=FALSE \
-%endif
   -DCMAKE_VERBOSE_MAKEFILE=TRUE \
   -DCMAKE_BUILD_TYPE=Release \
   -DCMAKE_C_FLAGS_RELEASE:STRING="$RPM_OPT_FLAGS -fno-strict-aliasing" \
   -DCMAKE_CXX_FLAGS_RELEASE:STRING="$RPM_OPT_FLAGS" \
   -DCMAKE_SKIP_RPATH=1 \
   -DPACKAGE_ARCHITECTURE=`uname -m` \
-  -DEXPLICIT_SOURCE="$EXPLICIT_SOURCE" \
   -DEXPLICIT_TARGET="$EXPLICIT_TARGET" \
   -DLIB=%{_lib} \
   -DBUILD_RUBY_GEM=no \
   ..
 
-make
+make CFLAGS="-DSSL_LIB='\"$SSL_LIB\"'"
 
 %install
 cd build
 make DESTDIR=$RPM_BUILD_ROOT install
-mkdir -p $RPM_BUILD_ROOT%{_docdir}
-cp -a bindings/ruby/html $RPM_BUILD_ROOT%{_docdir}/openwsman-ruby-docs
 cd ..
 rm -f $RPM_BUILD_ROOT%{_libdir}/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/openwsman/plugins/*.la
 rm -f $RPM_BUILD_ROOT%{_libdir}/openwsman/authenticators/*.la
 [ -d $RPM_BUILD_ROOT%{ruby_sitelib} ] && rm -f $RPM_BUILD_ROOT%{ruby_sitelib}/openwsmanplugin.rb
 [ -d $RPM_BUILD_ROOT%{ruby_vendorlib} ] && rm -f $RPM_BUILD_ROOT%{ruby_vendorlib}/openwsmanplugin.rb
-%if 0%{?has_systemd}
-install -D -m 644 %{S:4} $RPM_BUILD_ROOT%{_unitdir}/%{name}.service
-# rcopenwsman
-ln -sf %{_sbindir}/service $RPM_BUILD_ROOT%{_sbindir}/rc%{name}
-%else
+%if 0%{?suse_version} <= 1210
 mkdir -p $RPM_BUILD_ROOT%{_sysconfdir}/init.d
 install -m 755 build/etc/init/openwsmand.sh $RPM_BUILD_ROOT%{_sysconfdir}/init.d/openwsmand
 ln -sf %{_sysconfdir}/init.d/openwsmand $RPM_BUILD_ROOT%{_sbindir}/rcopenwsmand
@@ -387,17 +327,20 @@ install -m 644 %{S:2} $RPM_BUILD_ROOT%{_sysconfdir}/pam.d/openwsman
 %if 0%{?suse_version} > 1010
 install -D -m 644 %{S:3} $RPM_BUILD_ROOT%{_sysconfdir}/sysconfig/SuSEfirewall2.d/services/openwsman
 %endif
+%if 0%{?has_systemd}
+install -D -m 644 %{S:4} $RPM_BUILD_ROOT%{_unitdir}/%{name}.service
+%endif
 
-%post -n libwsman3 -p /sbin/ldconfig
+%post -n libwsman1 -p /sbin/ldconfig
 
-%postun -n libwsman3
+%postun -n libwsman1
 /sbin/ldconfig
 exit 0
 
 # follow http://en.opensuse.org/openSUSE:Systemd_packaging_guidelines
 %if 0%{?has_systemd}
 %pre server
-if [ -f /var/lib/systemd/migrated/%{name} ]; then
+if [-f /var/lib/systemd/migrated/%{name}]; then
 %service_add_pre %{name}.service
 fi
 %endif
@@ -443,13 +386,12 @@ rm -f /var/log/wsmand.log
 
 %postun -n libwsman_clientpp1 -p /sbin/ldconfig
 
-%files -n libwsman3
+%files -n libwsman1
 %defattr(-,root,root)
-%doc AUTHORS COPYING ChangeLog README.md TODO src/plugins/redirect/redirect-README
+%doc AUTHORS COPYING ChangeLog README.md TODO
 %{_libdir}/libwsman.so.*
 %{_libdir}/libwsman_client.so.*
 %{_libdir}/libwsman_curl_client_transport.so.*
-%dir %{_sysconfdir}/openwsman
 %config(noreplace) %{_sysconfdir}/openwsman/openwsman_client.conf
 
 %files -n libwsman-devel
@@ -465,6 +407,9 @@ rm -f /var/log/wsmand.log
 %{python_sitearch}/*.so
 %{python_sitearch}/*.py*
 
+# RHEL6 is missing ruby-devel in OBS
+%if 0%{?rhel_version} != 600
+
 %files ruby
 %defattr(-,root,root)
 %if 0%{?mandriva_version}
@@ -479,10 +424,7 @@ rm -f /var/log/wsmand.log
 %{ruby_sitelib}/openwsman/*.rb
 %endif
 
-%files ruby-docs
-%defattr(-,root,root)
-%dir %{_docdir}/openwsman-ruby-docs
-%{_docdir}/openwsman-ruby-docs
+%endif
 
 %files perl
 %defattr(-,root,root)
@@ -498,6 +440,7 @@ rm -f /var/log/wsmand.log
 
 %files server
 %defattr(-,root,root)
+%dir %{_sysconfdir}/openwsman
 %config(noreplace) %{_sysconfdir}/openwsman/openwsman.conf
 %config(noreplace) %{_sysconfdir}/openwsman/ssleay.cnf
 %attr(0755,root,root) %{_sysconfdir}/openwsman/owsmangencert.sh
@@ -505,12 +448,9 @@ rm -f /var/log/wsmand.log
 %if 0%{?suse_version} > 1010
 %config %{_sysconfdir}/sysconfig/SuSEfirewall2.d/services/openwsman
 %endif
-%if 0%{?has_systemd}
-%{_unitdir}/%{name}.service
-%{_sbindir}/rc%{name}
-%else
+%if 0%{?suse_version} <= 1210
 %attr(0755,root,root) %{_sysconfdir}/init.d/openwsmand
-%{_sbindir}/rc%{name}d
+%{_sbindir}/rcopenwsmand
 %endif
 %dir %{_libdir}/openwsman
 %dir %{_libdir}/openwsman/authenticators
@@ -519,13 +459,11 @@ rm -f /var/log/wsmand.log
 %dir %{_libdir}/openwsman/plugins
 %{_libdir}/openwsman/plugins/*.so
 %{_libdir}/openwsman/plugins/*.so.*
-%exclude %{_libdir}/openwsman/plugins/*ruby*.so*
 %{_sbindir}/openwsmand
 %{_libdir}/libwsman_server.so.*
-
-%files server-plugin-ruby
-%defattr(-,root,root)
-%{_libdir}/openwsman/plugins/*ruby*.so
+%if 0%{?has_systemd}
+%{_unitdir}/%{name}.service
+%endif
 
 %files -n libwsman_clientpp1
 %defattr(-,root,root)
@@ -536,9 +474,5 @@ rm -f /var/log/wsmand.log
 %{_libdir}/libwsman_clientpp.so
 %dir %{_includedir}/openwsman/cpp
 %{_includedir}/openwsman/cpp/*.h
-
-%files -n winrs
-%defattr(-,root,root)
-%{_bindir}/winrs
 
 %changelog

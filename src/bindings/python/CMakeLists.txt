@@ -12,7 +12,7 @@ enable_testing()
 
 add_subdirectory(tests)
 
-EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))" OUTPUT_VARIABLE PYTHON_LIB_DIR)
+EXECUTE_PROCESS(COMMAND ${PYTHON_EXECUTABLE} -c "from distutils.sysconfig import get_python_lib; print get_python_lib(1)" OUTPUT_VARIABLE PYTHON_LIB_DIR)
 STRING(REPLACE "\n" "" PYTHON_LIB_DIR "${PYTHON_LIB_DIR}")
 
 MESSAGE(STATUS "Python executable: ${PYTHON_EXECUTABLE}")
@@ -36,8 +36,6 @@ SET(pywsman_SRCS ${SWIG_OUTPUT} ${CMAKE_CURRENT_SOURCE_DIR}/../openwsman.c)
 ADD_LIBRARY( pywsman SHARED ${pywsman_SRCS} )
 SET_TARGET_PROPERTIES( pywsman PROPERTIES PREFIX "_" )
 
-INCLUDE_DIRECTORIES( ${PYTHON_INCLUDE_DIRS} )
-# RHEL5 needs this:
 INCLUDE_DIRECTORIES( ${PYTHON_INCLUDE_PATH} )
 INCLUDE_DIRECTORIES( ${CMAKE_CURRENT_BINARY_DIR} )
 INCLUDE_DIRECTORIES( ${CMAKE_SOURCE_DIR} ${CMAKE_SOURCE_DIR}/bindings ${CMAKE_SOURCE_DIR}/include )
