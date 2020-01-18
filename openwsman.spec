@@ -18,7 +18,7 @@ BuildRequires:  perl-devel pkgconfig openssl-devel
 BuildRequires:  cmake
 BuildRequires:  systemd-units
 Version:        2.6.3
-Release:        3.git%{shortcommit}%{?dist}
+Release:        4.git%{shortcommit}%{?dist}
 Url:            http://www.openwsman.org/
 License:        BSD
 Group:          Applications/System
@@ -44,6 +44,8 @@ Patch1:         openwsman-2.6.2-openssl-1.1-fix.patch
 Patch2:         openwsman-2.6.3-cipher-list-config.patch
 # Patch3: fixes rhbz#1532722
 Patch3:         openwsman-2.6.3-http-status-line.patch
+# Patch4: fixes rhbz#1547144, , already upstream
+Patch4:         openwsman-2.6.3-ecdh-support.patch
 
 %description
 Openwsman is a project intended to provide an open-source
@@ -170,6 +172,7 @@ cd %{name}-%{commit}
 %patch1 -p1 -b .openssl-1.1-fix
 %patch2 -p1 -b .cipher-list-config
 %patch3 -p1 -b .http-status-line
+%patch4 -p1 -b .ecdh-support
 
 %build
 # build regular source
@@ -195,6 +198,7 @@ cmake \
   -DPACKAGE_ARCHITECTURE=`uname -m` \
   -DLIB=%{_lib} \
   -DBUILD_RUBY_GEM=no \
+  -DBUILD_JAVA=no \
    ..
 
 make CFLAGS="-DSSL_LIB='\"$SSL_LIB\"'"
@@ -223,6 +227,7 @@ cmake \
   -DPACKAGE_ARCHITECTURE=`uname -m` \
   -DLIB=%{_lib} \
   -DBUILD_RUBY_GEM=no \
+  -DBUILD_JAVA=no \
    ..
 
 make CFLAGS="-DSSL_LIB='\"$SSL_LIB\"'"
@@ -347,6 +352,12 @@ rm -f /var/log/wsmand.log
 
 
 %changelog
+* Fri Jun 15 2018 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-4.git4391e5c
+- Explicitly disable build of java bindings
+  Resolves: #1540723
+- Add support for ECDH key exchange algorithm
+  Resolves: #1547144
+
 * Wed Jan 31 2018 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-3.git4391e5c
 - Add libwsman-client.so.1 for backward compatibility
   Resolves: #1537528
