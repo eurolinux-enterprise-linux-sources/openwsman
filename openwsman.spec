@@ -18,7 +18,7 @@ BuildRequires:  perl-devel pkgconfig openssl-devel
 BuildRequires:  cmake
 BuildRequires:  systemd-units
 Version:        2.6.3
-Release:        4.git%{shortcommit}%{?dist}
+Release:        6.git%{shortcommit}%{?dist}
 Url:            http://www.openwsman.org/
 License:        BSD
 Group:          Applications/System
@@ -46,6 +46,8 @@ Patch2:         openwsman-2.6.3-cipher-list-config.patch
 Patch3:         openwsman-2.6.3-http-status-line.patch
 # Patch4: fixes rhbz#1547144, , already upstream
 Patch4:         openwsman-2.6.3-ecdh-support.patch
+# Patch5: fixes CVE-2019-3816, rhbz#1668657
+Patch5:         openwsman-2.6.3-CVE-2019-3816.patch
 
 %description
 Openwsman is a project intended to provide an open-source
@@ -173,6 +175,7 @@ cd %{name}-%{commit}
 %patch2 -p1 -b .cipher-list-config
 %patch3 -p1 -b .http-status-line
 %patch4 -p1 -b .ecdh-support
+%patch5 -p1 -b .CVE-2019-3816
 
 %build
 # build regular source
@@ -352,6 +355,15 @@ rm -f /var/log/wsmand.log
 
 
 %changelog
+* Wed Mar 13 2019 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-6.git4391e5c
+- Update the fix for CVE-2019-3816
+  Resolves: #1668657
+- Remove Dist Tag from the oldest changelog entry
+
+* Mon Mar 04 2019 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-5.git4391e5c
+- Fix CVE-2019-3816
+  Resolves: #1668657
+
 * Fri Jun 15 2018 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-4.git4391e5c
 - Explicitly disable build of java bindings
   Resolves: #1540723
@@ -550,5 +562,5 @@ rm -f /var/log/wsmand.log
 * Mon Sep 22 2008 Matt Domsch <Matt_Domsch@dell.com> - 2.1.0-1
 - update to 2.1.0, resolves security issues
 
-* Tue Aug 19 2008  <srinivas_ramanatha@dell.com> - 2.0.0-1%{?dist}
+* Tue Aug 19 2008  <srinivas_ramanatha@dell.com> - 2.0.0-1
 - Modified the spec file to adhere to fedora packaging guidelines.
