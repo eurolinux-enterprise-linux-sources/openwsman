@@ -37,6 +37,7 @@
 
 #include "u/libu.h"
 
+#define FOUND_HELP ((void *)1)
 /* ----------------------------------------------------------------------------
 			Misc
 ----------------------------------------------------------------------------- */
@@ -199,8 +200,6 @@ static void print_short_help(u_option_context_t *ctx)
 
 	print_help_buf(&help_buf);
 	free_help_buf(&help_buf);
-
-	exit (0);
 }
 
 static void print_long_help(u_option_context_t *ctx, char *hoption)
@@ -260,8 +259,6 @@ static void print_long_help(u_option_context_t *ctx, char *hoption)
 
 	print_help_buf(&help_buf);
 	free_help_buf(&help_buf);
-
-	exit (0);
 }
 
 static unsigned int context_get_number_entries(u_option_context_t *ctx)
@@ -418,6 +415,7 @@ static u_option_entry_t* find_long_opt(u_option_context_t *ctx, char *option)
 	if (!strncmp(option, "help", strlen("help")) ) {
 		if (ctx->mode & U_OPTION_CONTEXT_HELP_ENABLED) {
 			print_long_help(ctx, option);
+                  return FOUND_HELP;
 		}
 	}
 
@@ -455,6 +453,7 @@ static u_option_entry_t* find_short_opt(u_option_context_t *ctx, char option)
 	if (option == '?') {
 		if (ctx->mode & U_OPTION_CONTEXT_HELP_ENABLED) {
 			print_short_help(ctx);
+                  return FOUND_HELP;
 		}
 	}
 
@@ -635,6 +634,9 @@ void u_option_context_set_help_enabled(u_option_context_t *ctx,
 
 /* ----------------------------------------------------------------------------
 			Parse
+ * return 0 on error
+ * return 1 on ok
+ * return 2 on help
 ----------------------------------------------------------------------------- */
 
 char u_option_context_parse(u_option_context_t *ctx,
@@ -651,7 +653,7 @@ char u_option_context_parse(u_option_context_t *ctx,
 	int		i,	j;
 	char		retval = 0;
 
-	u_option_entry_t	*found;
+	u_option_entry_t	*found=NULL;
 	struct tmp_buf		*tmp_data;
 
 	if (!ctx)
@@ -696,7 +698,10 @@ char u_option_context_parse(u_option_context_t *ctx,
 		}
 		if (*optptr == '-' && optptr == largv[i] + 1) {
 			found = find_long_opt(ctx, optptr + 1);
-			if (found) {
+                        if (found == FOUND_HELP) {
+                          goto ret;
+                        }
+                        else if (found) {
 				nlen = strlen(found->name);
 				if (strlen(optptr + 1) != nlen) {
 					argptr = optptr + nlen + 2;
@@ -710,7 +715,10 @@ char u_option_context_parse(u_option_context_t *ctx,
 			}
 		} else {
 			found = find_short_opt(ctx, *optptr);
-			if (found) {
+                        if (found == FOUND_HELP) {
+                          goto ret;
+                        }
+			else if (found) {
 				if (arg_ind + i + 1 < *argc) {
 					arg_ind++;
 					argptr = largv[arg_ind + i];
@@ -774,7 +782,7 @@ char u_option_context_parse(u_option_context_t *ctx,
 				}
 			}
 			get_tmp_data(tmp_data, nd);
-			retval = 1;
+                        retval = (found == FOUND_HELP) ? 2 : 1;
 		}
 		for (i = 1; i < *argc; i++)
 			u_free(largv[i]);

@@ -4,6 +4,9 @@
 %{!?python_sitearch: %global python_sitearch %(%{__python} -c "from distutils.sysconfig import get_python_lib; print(get_python_lib(1))")}
 %endif
 
+%global         commit          4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b
+%global         shortcommit     %(c=%{commit}; echo ${c:0:7})
+%global         compatver       2.3.6
 
 Name:           openwsman
 BuildRequires:  swig
@@ -14,27 +17,33 @@ BuildRequires:  perl-devel pkgconfig openssl-devel
 #BuildRequires: java-1.8.0-openjdk-devel
 BuildRequires:  cmake
 BuildRequires:  systemd-units
-Version:        2.3.6
-Release:        14%{?dist}
+Version:        2.6.3
+Release:        3.git%{shortcommit}%{?dist}
 Url:            http://www.openwsman.org/
 License:        BSD
 Group:          Applications/System
 Summary:        Open source Implementation of WS-Management
-Source:         http://downloads.sourceforge.net/project/openwsman/%{name}/%{version}/%{name}-%{version}.tar.bz2
+# The source for this package was pulled from upstream's vcs.  Use the
+# following commands to generate the tarball:
+#  git clone https://github.com/Openwsman/openwsman.git; cd openwsman
+#  git archive --format tar --prefix openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/ \
+#    4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b | gzip > openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b.tar.gz
+Source0:        %{name}-%{commit}.tar.gz
 # help2man generated manpage for openwsmand binary
 Source1:        openwsmand.8.gz
 # service file for systemd
 Source2:        openwsmand.service
 # script for testing presence of the certificates in ExecStartPre
 Source3:        owsmantestcert.sh
-Patch1:         openwsman-2.2.7-libssl.patch
-Patch2:         openwsman-2.4.0-pamsetup.patch
-# Patch3: already upstream
-Patch3:         openwsman-2.3.6-redirect.patch
-# Patch4: already upstream
-Patch4:         openwsman-2.3.6-disable-ssl-protocols-config.patch
-# Patch5: already upstream
-Patch5:         openwsman-2.3.6-curl-setopt-fix.patch
+# source for libwsman_client lib compatibility
+Source4:        %{name}-%{compatver}.tar.bz2
+Patch0:         openwsman-2.4.0-pamsetup.patch
+# Patch1: partially upstream
+Patch1:         openwsman-2.6.2-openssl-1.1-fix.patch
+# Patch2: already upstream
+Patch2:         openwsman-2.6.3-cipher-list-config.patch
+# Patch3: fixes rhbz#1532722
+Patch3:         openwsman-2.6.3-http-status-line.patch
 
 %description
 Openwsman is a project intended to provide an open-source
@@ -154,14 +163,45 @@ This package provides Perl bindings to access the openwsman client API.
 
 
 %prep
-%setup -q
-%patch1 -p1 -b .libssl
-%patch2 -p1 -b .pamsetup
-%patch3 -p1 -b .redirect
-%patch4 -p1 -b .disable-ssl-protocols-config
-%patch5 -p1 -b .curl-setopt-fix
+%setup -q -c -n %{name} -a 4
+# apply patches for regular source
+cd %{name}-%{commit}
+%patch0 -p1 -b .pamsetup
+%patch1 -p1 -b .openssl-1.1-fix
+%patch2 -p1 -b .cipher-list-config
+%patch3 -p1 -b .http-status-line
 
 %build
+# build regular source
+cd %{name}-%{commit}
+# Removing executable permissions on .c and .h files to fix rpmlint warnings.
+chmod -x src/cpp/WsmanClient.h
+
+rm -rf build
+mkdir build
+
+export RPM_OPT_FLAGS="$RPM_OPT_FLAGS -DFEDORA -DNO_SSL_CALLBACK"
+export SSL_LIB=`readlink %{_libdir}/libssl.so`
+export CFLAGS="-D_GNU_SOURCE -fPIE -DPIE"
+export LDFLAGS="$LDFLAGS -Wl,-z,now -pie"
+cd build
+cmake \
+  -DCMAKE_INSTALL_PREFIX=/usr \
+  -DCMAKE_VERBOSE_MAKEFILE=TRUE \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_C_FLAGS_RELEASE:STRING="$RPM_OPT_FLAGS -fno-strict-aliasing" \
+  -DCMAKE_CXX_FLAGS_RELEASE:STRING="$RPM_OPT_FLAGS" \
+  -DCMAKE_SKIP_RPATH=1 \
+  -DPACKAGE_ARCHITECTURE=`uname -m` \
+  -DLIB=%{_lib} \
+  -DBUILD_RUBY_GEM=no \
+   ..
+
+make CFLAGS="-DSSL_LIB='\"$SSL_LIB\"'"
+
+
+# build compat source
+cd ../../%{name}-%{compatver}
 # Removing executable permissions on .c and .h files to fix rpmlint warnings. 
 chmod -x src/cpp/WsmanClient.h
 
@@ -188,6 +228,8 @@ cmake \
 make CFLAGS="-DSSL_LIB='\"$SSL_LIB\"'"
 
 %install
+# install regular source
+cd %{name}-%{commit}
 cd build
 make DESTDIR=%{buildroot} install
 cd ..
@@ -210,6 +252,16 @@ cp %SOURCE1 %{buildroot}/%{_mandir}/man8/
 install -m 644 include/wsman-xml.h %{buildroot}/%{_includedir}/openwsman
 install -m 644 include/wsman-xml-binding.h %{buildroot}/%{_includedir}/openwsman
 install -m 644 include/wsman-dispatcher.h %{buildroot}/%{_includedir}/openwsman
+# remove winrs
+rm -f %{buildroot}/%{_bindir}/winrs
+
+# install compat library
+cd ../%{name}-%{compatver}
+install build/src/lib/libwsman_client.so.1.0.0 %{buildroot}/%{_libdir}
+# create symlink
+pushd %{buildroot}/%{_libdir}
+ln -s libwsman_client.so.1.0.0 libwsman_client.so.1
+popd
 
 %post -n libwsman1 -p /sbin/ldconfig
 
@@ -232,7 +284,7 @@ rm -f /var/log/wsmand.log
 %postun client -p /sbin/ldconfig
 
 %files -n libwsman1
-%doc AUTHORS COPYING ChangeLog README.md TODO
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md %{name}-%{commit}/TODO
 %{_libdir}/libwsman.so.*
 %{_libdir}/libwsman_client.so.*
 %{_libdir}/libwsman_curl_client_transport.so.*
@@ -241,20 +293,20 @@ rm -f /var/log/wsmand.log
 %{_includedir}/*
 %{_libdir}/pkgconfig/*
 %{_libdir}/*.so
-%doc AUTHORS COPYING ChangeLog README.md
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md
 
 %files python
 %{python_sitearch}/*.so
 %{python_sitearch}/*.py
 %{python_sitearch}/*.pyc
 %{python_sitearch}/*.pyo
-%doc AUTHORS COPYING ChangeLog README.md
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md
 
 %files ruby
 %{ruby_vendorarchdir}/_openwsman.so
 %dir %{ruby_vendorlibdir}/openwsman
 %{ruby_vendorlibdir}/openwsman/*.rb
-%doc AUTHORS COPYING ChangeLog README.md
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md
 
 
 #%files java
@@ -264,7 +316,7 @@ rm -f /var/log/wsmand.log
 %files perl
 %{perl_vendorarch}/openwsman.so
 %{perl_vendorlib}/openwsman.pm
-%doc AUTHORS COPYING ChangeLog README.md
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md
 
 %files server
 # Don't remove *.so files from the server package.
@@ -286,15 +338,29 @@ rm -f /var/log/wsmand.log
 %{_sbindir}/openwsmand
 %{_libdir}/libwsman_server.so.*
 %{_mandir}/man8/*
-%doc AUTHORS COPYING ChangeLog README.md
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md
 
 %files client
 %{_libdir}/libwsman_clientpp.so.*
 %config(noreplace) %{_sysconfdir}/openwsman/openwsman_client.conf
-%doc AUTHORS COPYING ChangeLog README.md
+%doc %{name}-%{commit}/AUTHORS %{name}-%{commit}/COPYING %{name}-%{commit}/ChangeLog %{name}-%{commit}/README.md
 
 
 %changelog
+* Wed Jan 31 2018 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-3.git4391e5c
+- Add libwsman-client.so.1 for backward compatibility
+  Resolves: #1537528
+
+* Mon Jan 22 2018 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-2.git4391e5c
+- Fix malformed HTTP 200 status line
+  Resolves: #1532722
+
+* Tue Oct 03 2017 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.6.3-1.git4391e5c
+- Update to openwsman-2.6.3 from upstream VCS
+  Resolves: #1208364 #1296198
+- Backport support for configuring used cipher suite
+  Resolves: #1454607
+
 * Wed Mar 15 2017 Vitezslav Crhonek <vcrhonek@redhat.com> - 2.3.6-14
 - Backport option for disabling various SSL protocols
   Resolves: #1190689

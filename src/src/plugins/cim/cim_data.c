@@ -59,6 +59,7 @@ static int cim_verify = 1; /* verify ssl cert */
 static char *cim_trust_store = "/etc/ssl/certs"; /* path to cert trust store */
 int omit_schema_optional = 0;
 char *indication_profile_implementation_ns = NULL;
+static char *cim_client_cql = "CQL";
 
 SER_START_ITEMS(CimResource)
 SER_END_ITEMS(CimResource);
@@ -102,6 +103,7 @@ set_vendor_namespaces(void)
           (WsSupportedNamespaces *)u_malloc(sizeof(WsSupportedNamespaces));
     ns->class_prefix = CimResource_Namespaces[i].class_prefix;
     ns->ns = (char*) CimResource_Namespaces[i].ns;
+    debug("Namespace %s => %s", ns->class_prefix, ns->ns);
     lnode_t *node = lnode_create(ns);
     list_append(l, node);
   }
@@ -113,6 +115,7 @@ set_vendor_namespaces(void)
            (WsSupportedNamespaces *)u_malloc(sizeof(WsSupportedNamespaces));
       ns->class_prefix = (char*)hnode_getkey(hn);
       ns->ns = (char*) hnode_get(hn);
+      debug("Namespace %s => %s", ns->class_prefix, ns->ns);
       lnode_t *node = lnode_create(ns);
       list_append(l, node);
     }
@@ -160,6 +163,7 @@ void set_config( void *self, dictionary *config )
     char *namespaces = iniparser_getstr (config, "cim:vendor_namespaces");
     cim_host = iniparser_getstring(config, "cim:host", "localhost");
     cim_client_frontend = iniparser_getstring(config, "cim:cim_client_frontend", "XML");
+    cim_client_cql = iniparser_getstring(config, "cim:cim_client_cql", "CQL");
     cim_port = iniparser_getstring(config, "cim:port", DEFAULT_HTTP_CIMOM_PORT);
     server_port = iniparser_getstring(config, "server:port", server_port);
     cim_ssl = iniparser_getboolean(config, "cim:ssl", 0);
@@ -169,7 +173,7 @@ void set_config( void *self, dictionary *config )
     indication_profile_implementation_ns = iniparser_getstring(config, "cim:indication_profile_implementation_ns", "root/interop");
     debug("vendor namespaces: %s", namespaces);
     if (namespaces) {
-      hash_t * t = u_parse_query(namespaces);
+      hash_t * t = u_parse_list(namespaces);
       if (t) {
         vendor_namespaces = t;
       }
@@ -199,6 +203,12 @@ char *
 get_cim_client_frontend()
 {
     return cim_client_frontend;
+}
+
+char *
+get_cim_client_cql()
+{
+    return cim_client_cql;
 }
 
 int get_omit_schema_optional()

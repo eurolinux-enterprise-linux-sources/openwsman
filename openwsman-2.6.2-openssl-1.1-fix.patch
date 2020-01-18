@@ -1,0 +1,192 @@
+diff -up openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/lib/wsman-curl-client-transport.c.orig openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/lib/wsman-curl-client-transport.c
+--- openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/lib/wsman-curl-client-transport.c.orig	2016-07-27 16:03:55.000000000 +0200
++++ openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/lib/wsman-curl-client-transport.c	2017-09-12 12:56:51.720463095 +0200
+@@ -241,12 +241,20 @@ write_handler( void *ptr, size_t size, s
+ static int ssl_certificate_thumbprint_verify_callback(X509_STORE_CTX *ctx, void *arg)
+ {
+ 	unsigned char *thumbprint = (unsigned char *)arg;
+-	X509 *cert = ctx->cert;
+ 	EVP_MD                                  *tempDigest;
+ 
+ 	unsigned char   tempFingerprint[EVP_MAX_MD_SIZE];
+ 	unsigned int      tempFingerprintLen;
+ 	tempDigest = (EVP_MD*)EVP_sha1( );
++
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++	X509 *cert = X509_STORE_CTX_get_current_cert(ctx);
++#else
++	X509 *cert = ctx->cert;
++#endif
++	if(!cert)
++		return 0;
++
+ 	if ( X509_digest(cert, tempDigest, tempFingerprint, &tempFingerprintLen ) <= 0)
+ 		return 0;
+ 	if(!memcmp(tempFingerprint, thumbprint, tempFingerprintLen))
+diff -up openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/compat_unix.h.orig openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/compat_unix.h
+--- openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/compat_unix.h.orig	2016-07-27 16:03:55.000000000 +0200
++++ openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/compat_unix.h	2017-09-12 12:56:51.720463095 +0200
+@@ -27,7 +27,6 @@
+ 	pthread_create(&tid, NULL, (void *(*)(void *))a, c); } while (0)
+ #endif /* !NO_THREADS */
+ 
+-#define	SSL_LIB				"libssl.so"
+ #define	DIRSEP				'/'
+ #define	IS_DIRSEP_CHAR(c)		((c) == '/')
+ #define	O_BINARY			0
+diff -up openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/config.h.orig openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/config.h
+--- openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/config.h.orig	2017-09-12 12:56:51.720463095 +0200
++++ openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/config.h	2017-09-12 12:56:51.720463095 +0200
+@@ -0,0 +1,29 @@
++/*
++ * Copyright (c) 2004-2005 Sergey Lyubka <valenok@gmail.com>
++ * All rights reserved
++ *
++ * "THE BEER-WARE LICENSE" (Revision 42):
++ * Sergey Lyubka wrote this file.  As long as you retain this notice you
++ * can do whatever you want with this stuff. If we meet some day, and you think
++ * this stuff is worth it, you can buy me a beer in return.
++ */
++
++#ifndef CONFIG_HEADER_DEFINED
++#define	CONFIG_HEADER_DEFINED
++
++#define	SHTTPD_VERSION	"1.42"		/* Version			*/
++#define	CONFIG_FILE	"shttpd.conf"	/* Configuration file		*/
++#define	HTPASSWD	".htpasswd"	/* Passwords file name		*/
++#define	URI_MAX		16384		/* Default max request size	*/
++#define	LISTENING_PORTS	"80"		/* Default listening ports	*/
++#define	INDEX_FILES	"index.html,index.htm,index.php,index.cgi"
++#define	CGI_EXT		"cgi,pl,php"	/* Default CGI extensions	*/
++#define	SSI_EXT		"shtml,shtm"	/* Default SSI extensions	*/
++#define	REALM		"mydomain.com"	/* Default authentication realm	*/
++#define	DELIM_CHARS	","		/* Separators for lists		*/
++#define	EXPIRE_TIME	3600		/* Expiration time, seconds	*/
++#define	ENV_MAX		4096		/* Size of environment block	*/
++#define	CGI_ENV_VARS	64		/* Maximum vars passed to CGI	*/
++#define	SERVICE_NAME	"SHTTPD " VERSION	/* NT service name	*/
++
++#endif /* CONFIG_HEADER_DEFINED */
+diff -up openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/io_ssl.c.orig openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/io_ssl.c
+--- openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/io_ssl.c.orig	2016-07-27 16:03:55.000000000 +0200
++++ openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/io_ssl.c	2017-09-12 12:56:51.720463095 +0200
+@@ -11,23 +11,6 @@
+ #include "defs.h"
+ 
+ #if !defined(NO_SSL)
+-struct ssl_func	ssl_sw[] = {
+-	{"SSL_free",			{0}},
+-	{"SSL_accept",			{0}},
+-	{"SSL_connect",			{0}},
+-	{"SSL_read",			{0}},
+-	{"SSL_write",			{0}},
+-	{"SSL_get_error",		{0}},
+-	{"SSL_set_fd",			{0}},
+-	{"SSL_new",			{0}},
+-	{"SSL_CTX_new",			{0}},
+-	{"SSLv23_server_method",	{0}},
+-	{"SSL_library_init",		{0}},
+-	{"SSL_CTX_use_PrivateKey_file",	{0}},
+-	{"SSL_CTX_use_certificate_file",{0}},
+-	{NULL,				{0}}
+-};
+-
+ void
+ _shttpd_ssl_handshake(struct stream *stream)
+ {
+diff -up openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/shttpd.c.orig openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/shttpd.c
+--- openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/shttpd.c.orig	2016-07-27 16:03:55.000000000 +0200
++++ openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/shttpd.c	2017-09-12 12:58:20.132254340 +0200
+@@ -1474,20 +1474,14 @@ set_ssl(struct shttpd_ctx *ctx, const ch
+ 	char *ssl_disabled_protocols = wsmand_options_get_ssl_disabled_protocols();
+ 	int		retval = FALSE;
+ 
+-	/* Load SSL library dynamically */
+-	if ((lib = dlopen(SSL_LIB, RTLD_LAZY)) == NULL) {
+-		_shttpd_elog(E_LOG, NULL, "set_ssl: cannot load %s", SSL_LIB);
+-		return (FALSE);
+-	}
+-
+-	for (fp = ssl_sw; fp->name != NULL; fp++)
+-		if ((fp->ptr.v_void = dlsym(lib, fp->name)) == NULL) {
+-			_shttpd_elog(E_LOG, NULL,"set_ssl: cannot find %s", fp->name);
+-			return (FALSE);
+-		}
+-
+ 	/* Initialize SSL crap */
++	debug("Initialize SSL");
++	SSL_load_error_strings();
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++	OPENSSL_init_ssl(0, NULL);
++#else
+ 	SSL_library_init();
++#endif
+ 
+ 	if ((CTX = SSL_CTX_new(SSLv23_server_method())) == NULL)
+ 		_shttpd_elog(E_LOG, NULL, "SSL_CTX_new error");
+@@ -1523,7 +1517,11 @@ set_ssl(struct shttpd_ctx *ctx, const ch
+ 			if (strncasecmp(protocols[idx].name, ssl_disabled_protocols, blank_ptr-ssl_disabled_protocols) == 0) {
+ 				//_shttpd_elog(E_LOG, NULL, "SSL: disable %s protocol", protocols[idx].name);
+ 				debug("SSL: disable %s protocol", protocols[idx].name);
++#if OPENSSL_VERSION_NUMBER >= 0x10100000L
++				SSL_CTX_set_options(CTX, protocols[idx].opt);
++#else
+ 				SSL_CTX_ctrl(CTX, SSL_CTRL_OPTIONS, protocols[idx].opt, NULL);
++#endif
+ 				break;
+ 			}
+ 		}
+diff -up openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/ssl.h.orig openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/ssl.h
+--- openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/ssl.h.orig	2016-07-27 16:03:55.000000000 +0200
++++ openwsman-4391e5c68d99c6239e1672d1c8a5a16d7d8c4c2b/src/server/shttpd/ssl.h	2017-09-12 12:56:51.721463093 +0200
+@@ -12,50 +12,4 @@
+ 
+ #include <openssl/ssl.h>
+ 
+-#else
+-
+-/*
+- * Snatched from OpenSSL includes. I put the prototypes here to be independent
+- * from the OpenSSL source installation. Having this, shttpd + SSL can be
+- * built on any system with binary SSL libraries installed.
+- */
+-
+-typedef struct ssl_st SSL;
+-typedef struct ssl_method_st SSL_METHOD;
+-typedef struct ssl_ctx_st SSL_CTX;
+-
+-#define	SSL_ERROR_WANT_READ	2
+-#define	SSL_ERROR_WANT_WRITE	3
+-#define	SSL_ERROR_SYSCALL	5
+-#define	SSL_FILETYPE_PEM	1
+-
+ #endif
+-
+-/*
+- * Dynamically loaded SSL functionality
+- */
+-struct ssl_func {
+-	const char	*name;		/* SSL function name	*/
+-	union variant	ptr;		/* Function pointer	*/
+-};
+-
+-extern struct ssl_func	ssl_sw[];
+-
+-#define	FUNC(x)	ssl_sw[x].ptr.v_func
+-
+-#define	SSL_free(x)	(* (void (*)(SSL *)) FUNC(0))(x)
+-#define	SSL_accept(x)	(* (int (*)(SSL *)) FUNC(1))(x)
+-#define	SSL_connect(x)	(* (int (*)(SSL *)) FUNC(2))(x)
+-#define	SSL_read(x,y,z)	(* (int (*)(SSL *, void *, int)) FUNC(3))((x),(y),(z))
+-#define	SSL_write(x,y,z) \
+-	(* (int (*)(SSL *, const void *,int)) FUNC(4))((x), (y), (z))
+-#define	SSL_get_error(x,y)(* (int (*)(SSL *, int)) FUNC(5))((x), (y))
+-#define	SSL_set_fd(x,y)	(* (int (*)(SSL *, int)) FUNC(6))((x), (y))
+-#define	SSL_new(x)	(* (SSL * (*)(SSL_CTX *)) FUNC(7))(x)
+-#define	SSL_CTX_new(x)	(* (SSL_CTX * (*)(SSL_METHOD *)) FUNC(8))(x)
+-#define	SSLv23_server_method()	(* (SSL_METHOD * (*)(void)) FUNC(9))()
+-#define	SSL_library_init() (* (int (*)(void)) FUNC(10))()
+-#define	SSL_CTX_use_PrivateKey_file(x,y,z)	(* (int (*)(SSL_CTX *, \
+-		const char *, int)) FUNC(11))((x), (y), (z))
+-#define	SSL_CTX_use_certificate_file(x,y,z)	(* (int (*)(SSL_CTX *, \
+-		const char *, int)) FUNC(12))((x), (y), (z))

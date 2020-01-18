@@ -4,7 +4,7 @@
 ENABLE_TESTING()
 
 	# loading wsman
-ADD_TEST(bindings_python_loading    ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} loading.py )
+ADD_TEST(bindings_python_loading      ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} loading.py )
 
 	# predefined stuff
 # ADD_TEST(bindings_python_constants  ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} constants.py )
@@ -25,10 +25,12 @@ ADD_TEST(bindings_python_loading    ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURR
 # ADD_TEST(bindings_python_options    ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} clientoptions.py )
 # ADD_TEST(bindings_python_debug      ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} debug.py )
         # Identify
-ADD_TEST(bindings_python_identify   ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} identify.py )
+ADD_TEST(bindings_python_identify     ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} identify.py )
 
 	# data types
 # ADD_TEST(bindings_python_fault      ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} fault.py )
+
+ADD_TEST(bindings_python_epr          ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} epr.py )
 
         # needs a CIMOM
 # ADD_TEST(bindings_python_computer_system      ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} cim_computer_system.py )
@@ -38,6 +40,8 @@ ADD_TEST(bindings_python_identify   ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURR
 # ADD_TEST(bindings_python_create               ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} create.py )
 # ADD_TEST(bindings_python_each_child           ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} each_child.py )
 ADD_TEST(bindings_python_enumerate            ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} enumerate.py )
+ADD_TEST(bindings_python_add_selector         ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} add_selector.py )
+ADD_TEST(bindings_python_add_selector2        ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} add_selector2.py )
 # ADD_TEST(bindings_python_get                  ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} get.py )
 # ADD_TEST(bindings_python_identify             ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} identify.py )
 # ADD_TEST(bindings_python_invoke               ${CMAKE_CURRENT_SOURCE_DIR}/run ${CMAKE_CURRENT_SOURCE_DIR} invoke.py )

@@ -21,7 +21,7 @@ endif (RUBY_LIBRARY AND RUBY_INCLUDE_PATH)
 #   RUBY_LIBDIR=`$RUBY -r rbconfig -e 'printf("%s",RbConfig::CONFIG@<:@"libdir"@:>@)'`
 #   RUBY_LIBRUBYARG=`$RUBY -r rbconfig -e 'printf("%s",RbConfig::CONFIG@<:@"LIBRUBYARG_SHARED"@:>@)'`
 
-FIND_PROGRAM(RUBY_EXECUTABLE NAMES ruby ruby19 ruby1.8 ruby18 )
+FIND_PROGRAM(RUBY_EXECUTABLE NAMES ruby ruby22 ruby21 ruby20 ruby19 ruby1.8 ruby18 )
 
 EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFIG['MAJOR']"
    OUTPUT_VARIABLE RUBY_VERSION_MAJOR)
@@ -57,10 +57,15 @@ EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFI
 EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFIG['vendorarchdir']"
   OUTPUT_VARIABLE RUBY_VENDORARCH_DIR ERROR_QUIET)
 
-IF(RUBY_VENDORARCH_DIR AND NOT(${RUBY_VENDORARCH_DIR} STREQUAL "nil"))
+IF(RUBY_VENDORARCH_DIR)
+  IF(${RUBY_VENDORARCH_DIR} STREQUAL "nil")
+  ELSE(${RUBY_VENDORARCH_DIR} STREQUAL "nil")
     EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFIG['vendorlibdir']"
        OUTPUT_VARIABLE RUBY_VENDORLIB_DIR)
-ELSE(RUBY_VENDORARCH_DIR AND NOT(${RUBY_VENDORARCH_DIR} STREQUAL "nil"))
+  ENDIF(${RUBY_VENDORARCH_DIR} STREQUAL "nil")
+ENDIF(RUBY_VENDORARCH_DIR)
+
+IF(NOT RUBY_VENDORLIB_DIR)
 
     # fall back to site*dir
     EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFIG['sitearchdir']"
@@ -68,7 +73,8 @@ ELSE(RUBY_VENDORARCH_DIR AND NOT(${RUBY_VENDORARCH_DIR} STREQUAL "nil"))
 
     EXECUTE_PROCESS(COMMAND ${RUBY_EXECUTABLE} -r rbconfig -e "print RbConfig::CONFIG['sitelibdir']"
        OUTPUT_VARIABLE RUBY_VENDORLIB_DIR)
-ENDIF(RUBY_VENDORARCH_DIR AND NOT(${RUBY_VENDORARCH_DIR} STREQUAL "nil"))
+
+ENDIF(NOT RUBY_VENDORLIB_DIR)
 
 # this is not needed if you use "print" inside the ruby statements
 # remove the new lines from the output by replacing them with empty strings

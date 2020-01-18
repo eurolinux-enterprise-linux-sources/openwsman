@@ -201,36 +201,53 @@ static int u_string_unify(char *s)
 }
 
 
-hash_t *u_parse_query(const char *query)
+static hash_t *
+_u_parse(const char *query, const char *separator)
 {
 	char *pp, *tok, *src, *q = NULL;
 	char *key=NULL, *val=NULL;
 	hash_t *h = NULL;
 
 	dbg_err_if(query == NULL);
+	dbg_err_if(separator == NULL);
 	q = u_strdup(query);
 	h = hash_create3(HASHCOUNT_T_MAX, 0, 0);
 
 	/* foreach name=value pair... */
-	for (src = q; (tok = strtok_r(src, "&,", &pp)) != NULL; src = NULL) {
+	for (src = q; (tok = strtok_r(src, separator, &pp)) != NULL; src = NULL) {
 		/* dup the string so we can modify it */
 		key = u_strdup(tok);
 		dbg_err_if(key == NULL);
 
 		val = strchr(key, '=');
-		dbg_err_if(val == NULL);
+		if (val == NULL) {
+                  warn("Missing '=' character in query: %s", tok);
+                  goto err;
+                }
 
 		/* zero-term the name part and set the value pointer */
 		*val++ = 0;
 		val = u_strdup(val);
+		dbg_err_if(val == NULL);
 
 		u_trim(key);
 		u_trim(val);
+          /* if we parse a URI (& separator) and the value contains
+           * ',' and '=', then the query probably has wrong syntax
+           * and uses ',' instead of '&'
+           */
+          if (*separator == '&') {
+            if (strchr(val, ',')) {
+              if (strchr(val, '=')) {
+                fprintf(stderr, "Maybe wrong use of ',' separator in URI, should be '&'\n");
+              }
+            }
+          }
 		u_trim_quotes(val);
 		if (u_string_unify(key) || u_string_unify(val)) {
 			u_free(key);
 			u_free(val);
-			dbg("Could not unify query: %s", tok);
+			warn("Could not unify %%nn sequences in query: %s", tok);
 			continue;
 		}
 		if (!hash_lookup(h, key)) {
@@ -250,9 +267,28 @@ hash_t *u_parse_query(const char *query)
 err:
 	u_free(q);
 	u_free(key);
+	hash_free(h);
 	return NULL;
 }
 
+/*
+ * parse query according to
+ * http://en.wikipedia.org/wiki/URI_scheme#Generic_syntax
+ * and  RFC 1866 section 8.2.1 : by Tim Berners-Lee in 1995 encourages CGI authors to support ';' in addition to '&'.
+ *
+ */
+
+hash_t *
+u_parse_query(const char *query)
+{
+  return _u_parse(query, "&;");
+}
+
+hash_t *
+u_parse_list(const char *list)
+{
+  return _u_parse(list, ",");
+}
 
 
 

@@ -41,17 +41,12 @@ extern "C" {
 #endif				/* __cplusplus */
 
 #include "wsman-types.h"
+#include "wsman-key-value.h"
 #include "u/hash.h"
 
 typedef struct {
-	char *value; //string or nestes epr_t
-	char *name;
-	int type; // type = 0, value is text; Or else, value is a nested epr_t
-} Selector;
-
-typedef struct {
 	unsigned int count;
-	Selector *selectors;
+	key_value_t *selectors;
 } SelectorSet;
 
 
@@ -62,19 +57,11 @@ typedef struct {
 } ReferenceParameters;
 
 
-typedef struct {
+typedef struct epr_struct {
 	char * address;
 	ReferenceParameters refparams;
 	void * additionalParams;
 } epr_t;
-
-typedef struct {
-	int type;
-	union{
-		char *text;
-		epr_t *eprp;
-	} entry;
-} selector_entry;
 
 /* support for array values, all represented with the same key */	
 typedef struct {
@@ -83,19 +70,22 @@ typedef struct {
 	int arraycount;
 } methodarglist_t;
 
-typedef int (*selector_callback ) (void *, const char*, const char*);
+typedef int (*selector_callback ) (void *data, const key_value_t *kv);
 
-void wsman_epr_selector_cb(epr_t *epr, selector_callback cb,
+void wsman_epr_selector_cb(const epr_t *epr, selector_callback cb,
 		void *cb_data);
 
 void wsman_selectorset_cb(SelectorSet *selectorset, selector_callback cb,
 		void *cb_data);
 
-char *wsman_epr_selector_by_name(epr_t *epr, const char* name);
+/* get string value of selector by name
+ * returns NULL if the selector value is an epr_t
+ */
+char *wsman_epr_selector_by_name(const epr_t *epr, const char* name);
 
-int epr_selector_count(epr_t *epr);
+int epr_selector_count(const epr_t *epr);
 
-char *epr_get_resource_uri(epr_t *epr);
+char *epr_get_resource_uri(const epr_t *epr);
 
  /**
  * Create an epr_t structure
@@ -152,7 +142,7 @@ void epr_destroy(epr_t *epr);
  * @param epr An epr point
  * @return created epr_t address
  */
-epr_t *epr_copy(epr_t *epr);
+epr_t *epr_copy(const epr_t *epr);
 
 /**
  * Compare two epr_ts
@@ -160,7 +150,7 @@ epr_t *epr_copy(epr_t *epr);
  * @param epr2
  * @return 0 for equality, others mean inequality
  */
- int epr_cmp(epr_t *epr1, epr_t *epr2);
+ int epr_cmp(const epr_t *epr1, const epr_t *epr2);
 
 /**
  * Turn an epr_t structure to an XML snippet.
@@ -173,7 +163,7 @@ epr_t *epr_copy(epr_t *epr);
  * @return 0 for success, others for failure
  */
 int epr_serialize(WsXmlNodeH node, const char *ns,
-		const char *epr_node_name, epr_t *epr, int embedded);
+		const char *epr_node_name, const epr_t *epr, int embedded);
 
 /**
  * Form an epr_t structure from an XML snippet.
@@ -199,14 +189,14 @@ char *get_cimnamespace_from_selectorset(SelectorSet *selectorset);
  * @param epr_t
  * @return A string in a format of "Resource_uri?name1=value1&name2=value2"
  */
-char *epr_to_string(epr_t* epr);
+char *epr_to_string(const epr_t* epr);
 
 /**
  * Create an XML representation of epr_t enclosed in <ns:epr_node_name>
  * @return created XML as string
  */
 
-char *epr_to_txt(epr_t *epr, const char *ns, const char*epr_node_name);
+char *epr_to_txt(const epr_t *epr, const char *ns, const char*epr_node_name);
 
 #ifdef __cplusplus
 }

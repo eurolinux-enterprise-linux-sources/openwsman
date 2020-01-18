@@ -14,7 +14,7 @@
 typedef struct {} epr_t;
 
 /*
- * EndPointReference
+ * Document-class: EndPointReference
  *
  * The EndPointReference is a stub to proxy server-side operations
  *
@@ -64,6 +64,9 @@ typedef struct {} epr_t;
   epr_t( const char *uri, const char *address) {
     return epr_create( uri, NULL, address);
   }
+  epr_t( const char *uri ) {
+    return epr_from_string( uri );
+  }
 #endif
 
   ~epr_t() {
@@ -76,7 +79,7 @@ typedef struct {} epr_t;
    * clone the EndPointReference instance
    *
    */
-  epr_t *clone(epr_t *epr) {
+  epr_t *clone(const epr_t *epr) {
     return epr_copy(epr);
   }
 #endif
@@ -108,7 +111,7 @@ typedef struct {} epr_t;
    * Compare two EndPointReferences
    *
    */
-  int cmp(epr_t *epr2) {
+  int cmp(const epr_t *epr2) {
     return epr_cmp($self, epr2);
   }
   
@@ -152,8 +155,16 @@ typedef struct {} epr_t;
   
 #if defined(SWIGRUBY)
   /*
-   * get value of selector by name
+   * Get value of selector by name
+   * epr#selector converts any value passed to String
    *
+   * ==== Shortcut
+   * epr.selector("name") can also be abbreviated as epr.name
+   *
+   * ==== Examples
+   *   epr.selector("name")
+   *   epr.selector(value)
+   *   epr.name
    */
   char *selector(VALUE v) {
     const char *name = as_string(v);
@@ -167,19 +178,31 @@ typedef struct {} epr_t;
     return wsman_epr_selector_by_name($self, name);
   }
 
-#if defined(SWIGRUBY)
+#if !defined(SWIGJAVA) /* Target_* undefined for Java in openwsman.i */
   /*
    * Return list of selector names
    */
+#if defined(SWIGRUBY)
   VALUE selector_names(void) {
+#endif
+#if defined(SWIGPYTHON)
+  PyObject *selector_names(void) {
+#endif
+#if defined(SWIGPERL)
+  AV *selector_names(void) {
+#endif
     int i;
-    VALUE ary = rb_ary_new2($self->refparams.selectorset.count);
-    Selector *p = $self->refparams.selectorset.selectors;
+    Target_Type ary = Target_SizedArray($self->refparams.selectorset.count);
+    key_value_t *p = $self->refparams.selectorset.selectors;
     for (i = 0; i < $self->refparams.selectorset.count; i++) {
-      rb_ary_store(ary, i, SWIG_FromCharPtr(p->name));
+      Target_ListSet(ary, i, SWIG_FromCharPtr(p->key));
       ++p;
     }
+#if defined(SWIGPERL)
+    return (AV *)ary;
+#else
     return ary;
+#endif
   }
 #endif
 
@@ -193,18 +216,16 @@ typedef struct {} epr_t;
    */
   void each() {
     int i;
-    Selector *p = NULL;
+    key_value_t *p = NULL;
     VALUE value, ary;
     p = $self->refparams.selectorset.selectors;
     for (i = 0; i < $self->refparams.selectorset.count; i++) {
       ary = rb_ary_new2(2);
-      rb_ary_store(ary, 0, SWIG_FromCharPtr(p->name));
+      rb_ary_store(ary, 0, SWIG_FromCharPtr(p->key));
       if (p->type == 0) {
-        value = SWIG_FromCharPtr(p->value);
+        value = SWIG_FromCharPtr(p->v.text);
       } else {
-        char *epr_value = epr_to_string((epr_t *)p->value);
-        value = SWIG_FromCharPtr(epr_value);
-        u_free(epr_value);
+        value = SWIG_NewPointerObj((void*) p->v.epr, SWIGTYPE_p_epr_t, 0);
       }
       rb_ary_store(ary, 1, value);
       rb_yield(ary);

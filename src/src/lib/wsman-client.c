@@ -49,27 +49,6 @@
 #include "wsman-faults.h"
 #include "wsman-client.h"
 
-static hash_t *
-get_selectors_from_uri(const char *resource_uri)
-{
-	u_uri_t        *uri;
-	hash_t *selectors = NULL;
-	if (resource_uri != NULL) {
-		if (u_uri_parse((const char *) resource_uri, &uri) != 0)
-			return NULL;
-	} else {
-		return NULL;
-	}
-	if (uri->query != NULL) {
-		 selectors = u_parse_query(uri->query);
-	}
-	if (uri) {
-		u_uri_free(uri);
-	}
-	return selectors;
-}
-
-
 void
 wsmc_set_dumpfile( WsManClient *cl, FILE *f )
 {
@@ -114,6 +93,19 @@ wsman_make_action(char *uri, char *op_name)
 		}
 	}
 	return NULL;
+}
+
+
+/*
+ * find key in property list
+ * callback for list_find()
+ */
+static int
+_list_key_compare(const void *node1, const void *key)
+{
+  const char *key1 = ((key_value_t *)node1)->key;
+  const char *key2 = (const char *)key;
+  return strcmp(key1, key2);
 }
 
 
@@ -183,6 +175,11 @@ wsmc_build_envelope(WsSerializerContextH serctx,
 				XML_NS_WS_MAN, WSM_FRAGMENT_TRANSFER,
 				1);
 	}
+	if (options->locale) {
+          node = ws_xml_add_child(header, XML_NS_WS_MAN, WSM_LOCALE, NULL);
+          ws_xml_set_node_lang(node, options->locale);
+          ws_xml_add_node_attr(node, XML_NS_SOAP_1_2, SOAP_MUST_UNDERSTAND, "false");
+	}
 
 	node = ws_xml_add_child(header, XML_NS_ADDRESSING, WSA_REPLY_TO, NULL);
 	ws_xml_add_child(node, XML_NS_ADDRESSING, WSA_ADDRESS, (char *)reply_to_uri);
@@ -193,8 +190,8 @@ wsmc_build_envelope(WsSerializerContextH serctx,
 
 		if (options->cim_ns) {
                   /* don't add CIM_NAMESPACE_SELECTOR twice */
-                  if (options->selectors && hash_count(options->selectors) > 0) {
-                    if (!hash_lookup(options->selectors, CIM_NAMESPACE_SELECTOR)) {
+                  if (options->selectors && list_count(options->selectors) > 0) {
+                    if (list_find(options->selectors, CIM_NAMESPACE_SELECTOR, _list_key_compare)) {
                       wsman_add_selector(header, CIM_NAMESPACE_SELECTOR, options->cim_ns);
                     }
                   }
@@ -317,17 +314,37 @@ wsmc_options_init(void)
 	return op;
 }
 
+/*
+ * Destroy list of key_value_t
+ *
+ */
+static void
+_wsmc_kvl_destroy(list_t *kvl)
+{
+  if (!kvl)
+    return;
+  while (!list_isempty(kvl)) {
+    lnode_t *node;
+    key_value_t *kv;
+
+    node = list_del_last(kvl);
+    if (!node)
+      break;
+    kv = (key_value_t *)node->list_data;
+    lnode_destroy(node);
+    key_value_destroy(kv, 0);
+  }
+  list_destroy(kvl);
+}
 
 void
 wsmc_options_destroy(client_opt_t * op)
 {
-	if (op->selectors) {
-		hash_free(op->selectors);
+	if (op->options) {
+		hash_free(op->options);
 	}
-	if (op->properties) {
-		hash_free(op->properties);
-	}
-
+        _wsmc_kvl_destroy(op->selectors);
+        _wsmc_kvl_destroy(op->properties);
 	u_free(op->fragment);
 	u_free(op->cim_ns);
 	u_free(op->delivery_uri);
@@ -359,34 +376,97 @@ wsmc_clear_action_option(client_opt_t * options, unsigned int flag)
 }
 
 
+/*
+ * (static function)
+ * Add key/value to list_t (e.g. options->properties or ->selectors)
+ * either as char* (string set, epr == NULL)
+ * or as epr_t (string == NULL, epr set)
+ */
+
+static void
+_wsmc_add_key_value(list_t **list_ptr,
+		const char *key,
+		const char *string,
+		const epr_t *epr)
+{
+  key_value_t *kv;
+  list_t *list = *list_ptr;
+  lnode_t *lnode;
+  if ((string != NULL) && (epr != NULL)) {
+    error("Ambiguous call to add_key_value");
+    return;
+  }
+  if (key == NULL) {
+    error("Can't add_key_value with NULL key");
+    return;
+  }
+  if (list == NULL) {
+    list = list_create(LISTCOUNT_T_MAX);
+    *list_ptr = list;
+  }
+  if (list_find(list, key, _list_key_compare)) {
+    error("duplicate key not added to list");
+    return;
+  }
+  kv = key_value_create(key, string, epr, NULL);
+  if (!kv) {
+    error("No memory for key/value pair");
+    return;
+  }
+  lnode = lnode_create(kv);
+  if (!lnode) {
+    error("No memory for key/value node");
+    return;
+  }
+  list_append(list, lnode);
+}
+
+
+/*
+ * add a char* as property
+ *
+ */
+
 void
 wsmc_add_property(client_opt_t * options,
 		const char *key,
 		const char *value)
 {
-	if (options->properties == NULL)
-		options->properties = hash_create(HASHCOUNT_T_MAX, 0, 0);
-	if (!hash_lookup(options->properties, key)) {
-		if (!hash_alloc_insert(options->properties,
-					(char *)key, (char *)value)) {
-			error("hash_alloc_insert failed");
-		}
-	} else {
-		error("duplicate not added to hash");
-	}
+  _wsmc_add_key_value(&(options->properties), key, value, NULL);
 }
 
+
+/*
+ * add an EndpointReference as property
+ *
+ */
+
 void
-wsmc_add_selector(client_opt_t * options,
+wsmc_add_property_epr(client_opt_t * options,
+		const char *key,
+		const epr_t *value)
+{
+  _wsmc_add_key_value(&(options->properties), key, NULL, value);
+}
+
+/*
+ * add key/value pair to WSM_OPTION_SET
+ *
+ */
+void
+wsmc_add_option(client_opt_t * options,
 		const char *key,
 		const char *value)
 {
-	if (options->selectors == NULL)
-		options->selectors = hash_create(HASHCOUNT_T_MAX, 0, 0);
-	if (!hash_lookup(options->selectors, key)) {
-		if (!hash_alloc_insert(options->selectors,
-					(char *)key, (char *)value)) {
+	if (options->options == NULL)
+		options->options = hash_create3(HASHCOUNT_T_MAX, 0, 0);
+	if (!hash_lookup(options->options, key)) {
+          char *k = u_strdup(key);
+          char *v = u_strdup(value);
+		if (!hash_alloc_insert(options->options, k, v)) {
 			error( "hash_alloc_insert failed");
+                  u_free(v);
+                  u_free(k);
 		}
 	} else {
 		error( "duplicate not added to hash");
@@ -394,57 +474,102 @@ wsmc_add_selector(client_opt_t * options,
 }
 
 void
+wsmc_add_selector(client_opt_t *options,
+		const char *key,
+		const char *value)
+{
+  _wsmc_add_key_value(&(options->selectors), key, value, NULL);
+}
+
+void
+wsmc_add_selector_epr(client_opt_t *options,
+		const char *key,
+		const epr_t *value)
+{
+  _wsmc_add_key_value(&(options->selectors), key, NULL, value);
+}
+
+static void
+_wsmc_add_uri_to_list(list_t **list_ptr, const char *query_string)
+{
+  hash_t *query;
+  if (!query_string || !list_ptr)
+    return;
+  
+  query = u_parse_query(query_string);
+  if (query) {
+    /* convert query hash to property list */
+    hscan_t hs;
+    hnode_t *hn;
+    list_t *list = *list_ptr;
+    _wsmc_kvl_destroy(list);
+    *list_ptr = NULL;
+    hash_scan_begin(&hs, query);
+    while ((hn = hash_scan_next(&hs))) {
+      _wsmc_add_key_value(list_ptr,
+                          (char *)hnode_getkey(hn),
+                          (char *)hnode_get(hn),
+                          NULL);
+    }
+    hash_free(query);
+  }
+}
+
+void
 wsmc_add_selectors_from_str(client_opt_t * options,
 		const char *query_string)
 {
-	if (query_string) {
-		hash_t *query = u_parse_query(query_string);
-		if (query) {
-			options->selectors = query;
-		}
-	}
+  _wsmc_add_uri_to_list(&(options->selectors), query_string);
 }
 
 void
 wsmc_add_prop_from_str(client_opt_t * options,
 		const char *query_string)
 {
-	hash_t *query;
-	if (!query_string)
-		return;
-
-        query = u_parse_query(query_string);
-	if (query) {
-		options->properties = query;
-	}
+  _wsmc_add_uri_to_list(&(options->properties), query_string);
 }
 
 void
 wsmc_add_selector_from_options(WsXmlDocH doc, client_opt_t *options)
 {
 	WsXmlNodeH      header;
-	hnode_t        *hn;
-	hscan_t         hs;
-	if (!options->selectors || hash_count(options->selectors) == 0)
+	lnode_t        *node;
+	if (!options->selectors || list_count(options->selectors) == 0)
 		return;
 	header = ws_xml_get_soap_header(doc);
-	hash_scan_begin(&hs, options->selectors);
-	while ((hn = hash_scan_next(&hs))) {
-		wsman_add_selector(header,
-				(char *) hnode_getkey(hn), (char *) hnode_get(hn));
-		debug("key = %s value=%s",
-				(char *) hnode_getkey(hn), (char *) hnode_get(hn));
+        node = list_first(options->selectors);
+  	while (node) {
+          key_value_t *kv;
+          kv = (key_value_t *)node->list_data;
+          if (kv->type == 0) {
+            wsman_add_selector(header, kv->key, kv->v.text);
+          }
+          else {
+            wsman_add_selector_epr(header, kv->key, kv->v.epr);
+          }
+          node = list_next(options->selectors, node);
 	}
 }
 
 void
-wsmc_set_options_from_uri(const char *resource_uri, client_opt_t * options)
+wsmc_set_selectors_from_uri(const char *resource_uri, client_opt_t * options)
 {
   if (options->selectors) {
-    hash_free_nodes(options->selectors);
-    hash_destroy(options->selectors);
+    list_destroy_nodes(options->selectors);
+    list_destroy(options->selectors);
   }
-  options->selectors = get_selectors_from_uri(resource_uri);
+  u_uri_t *uri = u_malloc(sizeof(u_uri_t));
+  u_uri_parse(resource_uri, &uri);
+  wsmc_add_selectors_from_str(options, uri->query);
+  u_uri_free(uri);
+}
+
+/* Err: should be wsmc_set_selectors_from_uri() */
+void
+wsmc_set_options_from_uri(const char *resource_uri, client_opt_t * options)
+{
+  error("Call to deprecated 'wsmc_set_options_from_uri', use 'wsmc_set_selectors_from_uri' instead");
+  wsmc_set_selectors_from_uri(resource_uri, options);
 }
 
 void
@@ -497,6 +622,19 @@ void
 wsmc_set_delivery_security_mode(WsManDeliverySecurityMode delivery_sec_mode, client_opt_t * options)
 {
         options->delivery_sec_mode = delivery_sec_mode;
+}
+
+void
+wsmc_set_locale(client_opt_t * options, const char *locale)
+{
+  u_free(options->locale);
+  options->locale = locale ? u_strdup(locale) : NULL;
+}
+
+char *
+wsmc_get_locale(client_opt_t * options)
+{
+  return options->locale;
 }
 
 void
@@ -768,8 +906,6 @@ wsmc_set_put_prop(WsXmlDocH get_response,
 {
 	WsXmlNodeH      resource_node;
 	char           *ns_uri;
-	hscan_t         hs;
-	hnode_t        *hn;
 	WsXmlNodeH      get_body = ws_xml_get_soap_body(get_response);
 	WsXmlNodeH      put_body = ws_xml_get_soap_body(put_request);
 
@@ -777,14 +913,20 @@ wsmc_set_put_prop(WsXmlDocH get_response,
 	resource_node = ws_xml_get_child(put_body, 0, NULL, NULL);
 	ns_uri = ws_xml_get_node_name_ns_uri(resource_node);
 
-	if (!options->properties) {
-		return;
-	}
-	hash_scan_begin(&hs, options->properties);
-	while ((hn = hash_scan_next(&hs))) {
-		WsXmlNodeH      n = ws_xml_get_child(resource_node, 0,
-				ns_uri, (char *) hnode_getkey(hn));
-		ws_xml_set_node_text(n, (char *) hnode_get(hn));
+	if (!list_isempty(options->properties)) {
+          lnode_t *node = list_first(options->properties);
+          while (node) {
+            key_value_t *property = (key_value_t *)node->list_data;
+            WsXmlNodeH n = ws_xml_get_child(resource_node, 0,
+                                            ns_uri, property->key);
+            if (property->type == 0) {
+              ws_xml_set_node_text(n, property->v.text);
+            }
+            else {
+              epr_serialize(n, ns_uri, property->key, property->v.epr, 1);
+            }
+            node = list_next(options->properties, node);
+          }
 	}
 }
 
@@ -830,14 +972,14 @@ wsmc_create_request(WsManClient * cl, const char *resource_uri,
 	WsXmlNodeH      header;
 	WsXmlNodeH      node;
 	char           *_action = NULL;
-	char            buf[20];
 	if (action == WSMAN_ACTION_IDENTIFY) {
 		request = ws_xml_create_envelope();
 	} else {
 		if (method) {
+		        /* WSA_ACTION is a URI */
 			if (strchr(method, '/'))
 				_action = u_strdup(method);
-			else
+			else /* 'invoke' action */
 				_action = wsman_make_action((char *)resource_uri, method);
 		} else {
 			_action = wsmc_create_action_str(action);
@@ -857,9 +999,13 @@ wsmc_create_request(WsManClient * cl, const char *resource_uri,
 	if (!body  || !header )
 		return NULL;
 	/*
-	 * flags to be passed as <w:OptionSet ...> <w:Option Name="..." ...> > */
-	if (options && (options->flags & (FLAG_CIM_EXTENSIONS|FLAG_EXCLUDE_NIL_PROPS))) {
-		WsXmlNodeH opset = ws_xml_add_child(header,
+	 * flags to be passed as <w:OptionSet ...> <w:Option Name="..." ...> >
+	 */
+	if (options) {
+	  WsXmlNodeH opset = NULL;
+	  if (options->flags & (FLAG_CIM_EXTENSIONS|FLAG_EXCLUDE_NIL_PROPS)) {
+	    /* need WSM_OPTION_SET */
+		opset = ws_xml_add_child(header,
 				XML_NS_WS_MAN, WSM_OPTION_SET, NULL);
 		if ((options->flags & FLAG_CIM_EXTENSIONS) == FLAG_CIM_EXTENSIONS) {
 			WsXmlNodeH op = ws_xml_add_child(opset,
@@ -872,6 +1018,22 @@ wsmc_create_request(WsManClient * cl, const char *resource_uri,
 				XML_NS_OPENWSMAN, WSM_OPTION, NULL);
 			ws_xml_add_node_attr(op, NULL, WSM_NAME, WSMB_EXCLUDE_NIL_PROPS);
 		}
+	  }
+	  if (options->options && hash_count(options->options) > 0) {
+	    hnode_t *hn;
+	    hscan_t hs;
+	    hash_scan_begin(&hs, options->options);
+	    if (!opset) {
+	      opset = ws_xml_add_child(header,
+				       XML_NS_WS_MAN, WSM_OPTION_SET, NULL);
+	    }
+	    while ((hn = hash_scan_next(&hs))) {
+	      WsXmlNodeH op = ws_xml_add_child(opset,
+					       XML_NS_WS_MAN, WSM_OPTION, NULL);
+	      ws_xml_add_node_attr(op, NULL, WSM_NAME, (char *) hnode_getkey(hn));
+	      ws_xml_set_node_text(op, (char *) hnode_get(hn));
+	    }
+	  }
 	}
 
 
@@ -918,14 +1080,18 @@ wsmc_create_request(WsManClient * cl, const char *resource_uri,
 		}
 		break;
 	case WSMAN_ACTION_RENEW:
+          {
+                char buf[20];
 		node = ws_xml_add_child(body,
 				XML_NS_EVENTING, WSEVENT_RENEW, NULL);
-		sprintf(buf, "PT%fS", options->expires);
+                /* %f default precision is 6 -> [-]ddd.ddd */
+		snprintf(buf, 20, "PT%fS", options->expires);
 		ws_xml_add_child(node, XML_NS_EVENTING, WSEVENT_EXPIRES, buf);
 		if(data) {
 			if(((char *)data)[0] != 0)
 				add_subscription_context(ws_xml_get_soap_header(request), (char *)data);
 		}
+          }
 		break;
 	case WSMAN_ACTION_NONE:
 	case WSMAN_ACTION_TRANSFER_CREATE:
@@ -1152,11 +1318,13 @@ wsmc_action_delete(WsManClient * cl,
 	return response;
 }
 
-static int add_selectors_from_epr(void *options, const char* key,
-		const char *value)
+static int add_selectors_from_epr(void *options, const key_value_t *kv)
 {
 	client_opt_t *op = (client_opt_t *)options;
-	wsmc_add_selector(op, key, value);
+        if (kv->type == 0)
+	  wsmc_add_selector(op, kv->key, kv->v.text);
+        else
+	  wsmc_add_selector_epr(op, kv->key, kv->v.epr);
 	return 0;
 }
 
@@ -1252,29 +1420,33 @@ wsmc_action_invoke(WsManClient * cl,
 
 	body = ws_xml_get_soap_body(request);
 
-	if ((!options->properties ||
-                    hash_count(options->properties) == 0) &&
+	if (list_isempty(options->properties) &&
                 data != NULL) {
 
 		WsXmlNodeH n = ws_xml_get_doc_root(data);
 		ws_xml_duplicate_tree(ws_xml_get_soap_body(request), n);
-        } else if (options->properties &&
-                hash_count(options->properties) > 0 ) {
+        } else if (!list_isempty(options->properties)) {
             if (method) {
-                WsXmlNodeH node = ws_xml_add_empty_child_format(body,
-                        (char *)resource_uri, "%s_INPUT", method);
-                hash_scan_begin(&hs, options->properties);
-                while ((hn = hash_scan_next(&hs))) {
-                    ws_xml_add_child(node,
-                            (char *)resource_uri,
-                            (char *) hnode_getkey(hn),
-                            (char *) hnode_get(hn));
+              WsXmlNodeH xnode = ws_xml_add_empty_child_format(body,
+                                  (char *)resource_uri, "%s_INPUT", method);
+              lnode_t *lnode = list_first(options->properties);
+              while (lnode) {
+                key_value_t *property = (key_value_t *)lnode->list_data;
+                if (property->type == 0) {
+                  ws_xml_add_child(xnode, (char *)resource_uri, (char *)property->key, (char *)property->v.text);
                 }
+                else {
+                  epr_serialize(xnode, (char *)resource_uri, property->key, property->v.epr, 1);
+                }
+                lnode = list_next(options->properties, lnode);
+              }
             }
-        } else {
+        } else if (!strchr(method, '/')) { /* non-custom method without parameters */
             ws_xml_add_empty_child_format(body,
                     (char *)resource_uri, "%s_INPUT", method);
-        }
+        } else {
+	  /* empty body */
+	}
 	if ((options->flags & FLAG_DUMP_REQUEST) == FLAG_DUMP_REQUEST) {
 		ws_xml_dump_node_tree(cl->dumpfile, ws_xml_get_doc_root(request));
 	}
@@ -1816,7 +1988,14 @@ wsmc_create(const char *hostname,
 		const char *username,
 		const char *password)
 {
+#ifndef _WIN32
+        dictionary *ini;
+#endif
 	WsManClient *wsc = (WsManClient *) calloc(1, sizeof(WsManClient));
+        if (wsc == NULL) {
+          error("Can't alloc WsManClient");
+          return NULL;
+        }
 	wsc->hdl = &wsc->data;
 
 	if (pthread_mutex_init(&wsc->mutex, NULL)) {
@@ -1825,6 +2004,14 @@ wsmc_create(const char *hostname,
 	}
 #ifndef _WIN32
 	wsmc_set_conffile(wsc, DEFAULT_CLIENT_CONFIG_FILE);
+        ini = iniparser_new(wsmc_get_conffile(wsc));
+        if (ini) {
+          char *user_agent = iniparser_getstr(ini, "client:agent");
+          if (user_agent) {
+            wsman_transport_set_agent(wsc, user_agent);
+          }
+          iniparser_free(ini);
+        }
 #endif
 	wsc->serctx = ws_serializer_init();
 	wsc->dumpfile = stdout;
@@ -1841,8 +2028,11 @@ wsmc_create(const char *hostname,
 #ifdef _WIN32
 	wsc->session_handle = 0;
 #endif
-	wsc->data.endpoint = u_strdup_printf("%s://%s:%d%s",
-			wsc->data.scheme, wsc->data.hostname, wsc->data.port, wsc->data.path);
+	wsc->data.endpoint = u_strdup_printf("%s://%s:%d%s%s",
+                                             wsc->data.scheme, wsc->data.hostname,
+                                             wsc->data.port,
+                                             (*wsc->data.path == '/') ? "" : "/",
+                                             wsc->data.path);
 	debug("Endpoint: %s", wsc->data.endpoint);
 	wsc->authentication.verify_host = 1; //verify CN in server certicates by default
 	wsc->authentication.verify_peer = 1; //validate server certificates by default

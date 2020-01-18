@@ -193,8 +193,7 @@ static int check_for_duplicate_selectors(op_t * op)
 			break;
 		}
 	}
-	hash_free_nodes(h);
-	hash_destroy(h);
+	hash_free(h);
 	return retval;
 }
 
@@ -208,12 +207,22 @@ static int validate_control_headers(op_t * op)
 	header = wsman_get_soap_header_element( op->in_doc,  NULL, NULL);
 	maxsize = ws_xml_get_child(header, 0, XML_NS_WS_MAN,
 			     WSM_MAX_ENVELOPE_SIZE);
-	mu = ws_xml_find_attr_value(maxsize, XML_NS_SOAP_1_2,
+        /* DSP0226, v1.2
+         * R13.1-3: A service should not send a SOAP Envelope with more than 32,767 octets unless the
+         * client has specified a wsman:MaxEnvelopeSize header that overrides this limit
+         */
+        if (maxsize == NULL) { /* no wsman:MaxEnvelopeSize specified */
+          op->maxsize = WSMAN_MAX_ENVELOPE_SIZE;
+        }
+        else {
+          mu = ws_xml_find_attr_value(maxsize, XML_NS_SOAP_1_2,
 				    SOAP_MUST_UNDERSTAND);
+        }
 	if (mu != NULL && strcmp(mu, "true") == 0) {
 		size = ws_deserialize_uint32(NULL, header,
 					     0, XML_NS_WS_MAN,
 					     WSM_MAX_ENVELOPE_SIZE);
+                /* wsman:MaxEnvelopeSize too small ? */
 		if (size < WSMAN_MINIMAL_ENVELOPE_SIZE_REQUEST) {
 			generate_op_fault(op, WSMAN_ENCODING_LIMIT,
 						WSMAN_DETAIL_MINIMUM_ENVELOPE_LIMIT);
@@ -312,6 +321,7 @@ check_unsupported_features(op_t * op)
 
 	n = ws_xml_get_child(header, 0, XML_NS_ADDRESSING, WSA_FAULT_TO);
 	if (n != NULL) {
+		debug("wsa:FaultTo is not supported");
 		retVal = 1;
 		generate_op_fault(op, WSMAN_UNSUPPORTED_FEATURE,
 					WSMAN_DETAIL_ADDRESSING_MODE);
@@ -805,7 +815,7 @@ dispatch_inbound_call(SoapH soap, WsmanMessage * msg, void *opaqueData)
 		wsman_set_fault(msg, WSA_DESTINATION_UNREACHABLE,
 				WSMAN_DETAIL_INVALID_RESOURCEURI, NULL);
 		destroy_dispatch_entry(dispatch);
-		debug("dispatch == NULL");
+		debug("op entry == NULL");
 		goto DONE;
 	}
 	op->in_doc = in_doc;
